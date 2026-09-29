@@ -52,15 +52,16 @@ import com.example.ui.theme.Slate400
 import com.example.ui.theme.Slate800
 
 val PC_SERVER_PYTHON_SCRIPT = """
-# ==========================================
-# PC Receiver Server (FastAPI HTTP + pyftpdlib FTP)
+# ==============================================================================
+# PC Receiver & Sender Script (FastAPI HTTP + pyftpdlib FTP + Phone Sender CLI)
 # Run on your PC: python server.py
-# Requirements: pip install fastapi uvicorn python-multipart pyftpdlib
-# ==========================================
+# Requirements: pip install fastapi uvicorn requests python-multipart pyftpdlib
+# ==============================================================================
 
 import os
 import shutil
 import threading
+import requests
 from fastapi import FastAPI, UploadFile, File
 import uvicorn
 from pyftpdlib.authorizers import DummyAuthorizer
@@ -83,12 +84,41 @@ async def upload_file(file: UploadFile = File(...)):
     with open(target_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     size_mb = os.path.getsize(target_path) / (1024 * 1024)
-    print(f"📥 Received file: {file.filename} ({size_mb:.2f} MB)")
+    print(f"📥 [PC Received] {file.filename} ({size_mb:.2f} MB)")
     return {"status": "saved", "filename": file.filename, "size_bytes": os.path.getsize(target_path)}
+
+def send_file_to_phone(phone_ip: str, file_path: str, port: int = 8080):
+    \"\"\"Send any file from PC to Android Phone's Embedded Receiver\"\"\"
+    if not os.path.exists(file_path):
+        print(f"❌ File not found: {file_path}")
+        return
+    url = f"http://{phone_ip}:{port}/receive"
+    print(f"📤 Sending {file_path} to Android Phone at {url}...")
+    with open(file_path, "rb") as f:
+        files = {"file": (os.path.basename(file_path), f)}
+        try:
+            resp = requests.post(url, files=files, timeout=60)
+            print(f"✅ Response from Phone: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            print(f"❌ Transfer error: {e}")
+
+def discover_phone(subnet_prefix="192.168.1", port=8080):
+    \"\"\"Discover Android Phone running MediaSync Bridge on LAN\"\"\"
+    print("🔍 Discovering phone on LAN...")
+    for i in range(1, 255):
+        ip = f"{subnet_prefix}.{i}"
+        try:
+            r = requests.get(f"http://{ip}:{port}/ping", timeout=0.15)
+            if r.status_code == 200:
+                data = r.json()
+                print(f"✨ Discovered Android Phone at {ip}: {data}")
+                return ip
+        except Exception:
+            pass
+    return None
 
 def start_ftp_server():
     authorizer = DummyAuthorizer()
-    # Default user: user / password with full write permissions
     authorizer.add_user("user", "password", UPLOAD_DIR, perm="elradfmwMT")
     handler = FTPHandler
     handler.authorizer = authorizer
@@ -98,12 +128,12 @@ def start_ftp_server():
     server.serve_forever()
 
 if __name__ == "__main__":
-    # Start FTP server in background daemon thread
     ftp_thread = threading.Thread(target=start_ftp_server, daemon=True)
     ftp_thread.start()
 
     print("🚀 FastAPI HTTP Server running on http://0.0.0.0:8000")
-    print(f"📁 Files will be stored in: {UPLOAD_DIR}")
+    print(f"📁 Files from phone saved in: {UPLOAD_DIR}")
+    print("💡 To send a file to phone: python -c 'import server; server.send_file_to_phone(\"<PHONE_IP>\", \"myfile.jpg\")'")
     uvicorn.run(app, host="0.0.0.0", port=8000)
 """.trimIndent()
 
@@ -143,7 +173,7 @@ fun CompanionScriptDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "PC Receiver Script",
+                            text = "PC Companion Script",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -161,7 +191,7 @@ fun CompanionScriptDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Save this script as `server.py` on your PC. It hosts both FastAPI HTTP (port 8000) and FTP (port 2121) to receive incoming media transfers directly into your ~/Downloads/MediaSync folder.",
+                    text = "Save this script as `server.py` on your PC. It receives files on port 8000 & FTP 2121, and includes the helper function to push files back to the phone on port 8080 (`/receive` and `/ping`).",
                     style = MaterialTheme.typography.bodySmall,
                     color = Slate400
                 )

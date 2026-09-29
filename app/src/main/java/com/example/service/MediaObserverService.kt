@@ -36,6 +36,9 @@ class MediaObserverService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var mediaObserver: ContentObserver? = null
 
+    // Embedded HTTP Server to receive incoming transfers from PC
+    private var embeddedServer: EmbeddedReceiverServer? = null
+
     private var lastProcessedMediaId: Long = -1L
     private var lastProcessedTimestamp: Long = 0L
     private val debounceMutex = Mutex()
@@ -58,6 +61,9 @@ class MediaObserverService : Service() {
 
         private val _serviceStartTime = MutableStateFlow(0L)
         val serviceStartTime: StateFlow<Long> = _serviceStartTime.asStateFlow()
+
+        private val _serverIpAddress = MutableStateFlow("127.0.0.1")
+        val serverIpAddress: StateFlow<String> = _serverIpAddress.asStateFlow()
     }
 
     override fun onCreate() {
@@ -118,12 +124,36 @@ class MediaObserverService : Service() {
             startForeground(NotificationHelper.NOTIFICATION_ID_FOREGROUND, notification)
         }
 
+        // 1. Register MediaStore ContentObserver for detecting photos/screenshots
         registerMediaStoreObserver()
+
+        // 2. Start Embedded HTTP Server on Port 8080 for receiving files from PC
+        startEmbeddedHttpServer()
+
         _isRunning.value = true
         if (_serviceStartTime.value == 0L) {
             _serviceStartTime.value = System.currentTimeMillis()
         }
-        Log.i(TAG, "MediaObserverService started foreground monitoring")
+        Log.i(TAG, "MediaObserverService started foreground monitoring & embedded HTTP server")
+    }
+
+    private fun startEmbeddedHttpServer() {
+        if (embeddedServer == null) {
+            embeddedServer = EmbeddedReceiverServer(
+                context = applicationContext,
+                port = 8080,
+                scope = serviceScope
+            ).apply {
+                start()
+                _serverIpAddress.value = getLocalIpAddress()
+            }
+            Log.i(TAG, "Embedded Receiver Server active on port 8080 (IP: ${_serverIpAddress.value})")
+        }
+    }
+
+    private fun stopEmbeddedHttpServer() {
+        embeddedServer?.stop()
+        embeddedServer = null
     }
 
     private fun registerMediaStoreObserver() {
@@ -321,6 +351,8 @@ class MediaObserverService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error unregistering observer", e)
         }
+
+        stopEmbeddedHttpServer()
 
         _isRunning.value = false
         _serviceStartTime.value = 0L

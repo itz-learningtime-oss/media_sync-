@@ -61,6 +61,7 @@ fun HomeScreen(
     isServiceRunning: Boolean,
     eventCount: Int,
     serviceStartTime: Long,
+    serverIp: String,
     serverConfig: ServerConfig,
     detectedMediaList: List<DetectedMedia>,
     hasStoragePermission: Boolean,
@@ -99,6 +100,7 @@ fun HomeScreen(
                 isRunning = isServiceRunning,
                 eventCount = eventCount,
                 serviceStartTime = serviceStartTime,
+                serverIp = serverIp,
                 onToggleService = onToggleService,
                 onTriggerScan = onTriggerScan,
                 onSimulateScreenshot = onSimulateScreenshot

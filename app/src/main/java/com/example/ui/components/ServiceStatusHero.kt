@@ -23,8 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radar
@@ -69,6 +71,7 @@ fun ServiceStatusHero(
     isRunning: Boolean,
     eventCount: Int,
     serviceStartTime: Long,
+    serverIp: String,
     onToggleService: (Boolean) -> Unit,
     onTriggerScan: () -> Unit,
     onSimulateScreenshot: () -> Unit,
@@ -168,14 +171,14 @@ fun ServiceStatusHero(
 
                         Column {
                             Text(
-                                text = if (isRunning) "LISTENER ACTIVE" else "LISTENER PAUSED",
+                                text = if (isRunning) "BI-DIRECTIONAL SYNC ACTIVE" else "BRIDGE PAUSED",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isRunning) CyanGlow else Slate400,
                                 letterSpacing = 1.2.sp
                             )
                             Text(
-                                text = if (isRunning) "Monitoring MediaStore" else "Foreground Service Off",
+                                text = if (isRunning) "Observer + HTTP Receiver on :8080" else "Foreground Service Off",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Slate400
                             )
@@ -220,11 +223,38 @@ fun ServiceStatusHero(
                         tint = EmeraldSuccess
                     )
                     StatPill(
-                        label = "Mode",
-                        value = "Foreground",
-                        icon = Icons.Default.Radar,
+                        label = "Port",
+                        value = ":8080",
+                        icon = Icons.Default.Lan,
                         tint = AmberWarning
                     )
+                }
+
+                if (isRunning) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Phone Receiver endpoint pill
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(CyanPrimary.copy(alpha = 0.1f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = CyanGlow,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "PC can POST to: http://$serverIp:8080/receive",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CyanGlow,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

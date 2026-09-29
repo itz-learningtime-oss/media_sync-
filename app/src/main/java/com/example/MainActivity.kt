@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
+    ) { _ ->
         checkPermissions()
         if (hasStoragePermissionState && hasNotificationPermissionState) {
             // Auto start service if not already running
@@ -199,6 +199,7 @@ fun MainAppScreen(
     val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
     val eventCount by viewModel.eventCount.collectAsStateWithLifecycle()
     val serviceStartTime by viewModel.serviceStartTime.collectAsStateWithLifecycle()
+    val serverIp by viewModel.serverIpAddress.collectAsStateWithLifecycle()
     val serverConfig by viewModel.serverConfig.collectAsStateWithLifecycle()
     val detectedList by viewModel.detectedMediaList.collectAsStateWithLifecycle()
     val transferLogs by viewModel.transferLogs.collectAsStateWithLifecycle()
@@ -321,6 +322,7 @@ fun MainAppScreen(
                     isServiceRunning = isServiceRunning,
                     eventCount = eventCount,
                     serviceStartTime = serviceStartTime,
+                    serverIp = serverIp,
                     serverConfig = serverConfig,
                     detectedMediaList = detectedList,
                     hasStoragePermission = hasStoragePermission,

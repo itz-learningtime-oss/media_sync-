@@ -34,6 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val eventCount: StateFlow<Int> = MediaObserverService.eventCount
     val lastDetected: StateFlow<DetectedMedia?> = MediaObserverService.lastDetected
     val serviceStartTime: StateFlow<Long> = MediaObserverService.serviceStartTime
+    val serverIpAddress: StateFlow<String> = MediaObserverService.serverIpAddress
 
     val serverConfig: StateFlow<ServerConfig> = repository.serverConfig
 
