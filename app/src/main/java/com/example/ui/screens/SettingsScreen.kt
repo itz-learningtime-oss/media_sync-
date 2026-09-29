@@ -1,0 +1,482 @@
+package com.example.ui.screens
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Http
+import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.model.AutoSyncMode
+import com.example.data.model.ServerConfig
+import com.example.ui.theme.AmberWarning
+import com.example.ui.theme.CyanGlow
+import com.example.ui.theme.CyanPrimary
+import com.example.ui.theme.DarkSurfaceVariant
+import com.example.ui.theme.EmeraldSuccess
+import com.example.ui.theme.RoseError
+import com.example.ui.theme.Slate400
+import com.example.ui.theme.Slate600
+import com.example.ui.theme.Slate800
+
+@Composable
+fun SettingsScreen(
+    currentConfig: ServerConfig,
+    isTestingConnection: Boolean,
+    connectionStatus: String?,
+    onSaveConfig: (ServerConfig) -> Unit,
+    onTestConnection: () -> Unit,
+    onShowCompanionScript: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var pcHost by remember(currentConfig) { mutableStateOf(currentConfig.pcHostIp) }
+    var httpPort by remember(currentConfig) { mutableStateOf(currentConfig.httpPort.toString()) }
+    var httpEndpoint by remember(currentConfig) { mutableStateOf(currentConfig.httpEndpoint) }
+    var ftpPort by remember(currentConfig) { mutableStateOf(currentConfig.ftpPort.toString()) }
+    var ftpUser by remember(currentConfig) { mutableStateOf(currentConfig.ftpUsername) }
+    var ftpPass by remember(currentConfig) { mutableStateOf(currentConfig.ftpPassword) }
+    var syncMode by remember(currentConfig) { mutableStateOf(currentConfig.autoSyncMode) }
+
+    var saveConfirmation by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+            .testTag("settings_screen"),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Section 1: PC Target IP & Connection
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Computer,
+                        contentDescription = null,
+                        tint = CyanGlow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Target PC Address",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = pcHost,
+                    onValueChange = { pcHost = it },
+                    label = { Text("PC Local IP (e.g. 192.168.1.100)") },
+                    singleLine = true,
+                    colors = textFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pc_ip_input")
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onTestConnection,
+                        enabled = !isTestingConnection,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Slate800,
+                            contentColor = CyanGlow
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("test_connection_button")
+                    ) {
+                        if (isTestingConnection) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = CyanGlow,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.NetworkCheck,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Test Ping", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    FilledTonalButton(
+                        onClick = onShowCompanionScript,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = CyanPrimary.copy(alpha = 0.15f),
+                            contentColor = CyanGlow
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("view_pc_script_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("PC Script (Py)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                if (connectionStatus != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = connectionStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (connectionStatus.startsWith("✅")) EmeraldSuccess else RoseError,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        // Section 2: HTTP Transfer Settings
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Http,
+                        contentDescription = null,
+                        tint = CyanGlow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "HTTP Protocol (FastAPI)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = httpPort,
+                        onValueChange = { httpPort = it },
+                        label = { Text("Port") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = textFieldColors(),
+                        modifier = Modifier
+                            .weight(0.35f)
+                            .testTag("http_port_input")
+                    )
+
+                    OutlinedTextField(
+                        value = httpEndpoint,
+                        onValueChange = { httpEndpoint = it },
+                        label = { Text("Endpoint") },
+                        singleLine = true,
+                        colors = textFieldColors(),
+                        modifier = Modifier
+                            .weight(0.65f)
+                            .testTag("http_endpoint_input")
+                    )
+                }
+            }
+        }
+
+        // Section 3: FTP Settings
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = null,
+                        tint = Color(0xFFA5B4FC),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "FTP Protocol (pyftpdlib)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = ftpPort,
+                    onValueChange = { ftpPort = it },
+                    label = { Text("FTP Port") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = textFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("ftp_port_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = ftpUser,
+                        onValueChange = { ftpUser = it },
+                        label = { Text("FTP User") },
+                        singleLine = true,
+                        colors = textFieldColors(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("ftp_user_input")
+                    )
+
+                    OutlinedTextField(
+                        value = ftpPass,
+                        onValueChange = { ftpPass = it },
+                        label = { Text("FTP Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        colors = textFieldColors(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("ftp_pass_input")
+                    )
+                }
+            }
+        }
+
+        // Section 4: Auto-Sync Mode
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = null,
+                        tint = AmberWarning,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Detection Action Behavior",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                SyncModeOption(
+                    title = "Interactive Notification (Recommended)",
+                    description = "Show heads-up popup with 'Send HTTP' & 'Send FTP' action buttons",
+                    selected = syncMode == AutoSyncMode.NOTIFICATION_CHOICE,
+                    onSelect = { syncMode = AutoSyncMode.NOTIFICATION_CHOICE }
+                )
+
+                SyncModeOption(
+                    title = "Auto-Send via HTTP",
+                    description = "Immediately POST new photos to FastAPI server automatically",
+                    selected = syncMode == AutoSyncMode.AUTO_HTTP,
+                    onSelect = { syncMode = AutoSyncMode.AUTO_HTTP }
+                )
+
+                SyncModeOption(
+                    title = "Auto-Send via FTP",
+                    description = "Immediately upload new photos to FTP server automatically",
+                    selected = syncMode == AutoSyncMode.AUTO_FTP,
+                    onSelect = { syncMode = AutoSyncMode.AUTO_FTP }
+                )
+            }
+        }
+
+        // Save Button
+        Button(
+            onClick = {
+                val newConfig = ServerConfig(
+                    pcHostIp = pcHost.trim(),
+                    httpPort = httpPort.toIntOrNull() ?: 8000,
+                    httpEndpoint = httpEndpoint.trim(),
+                    ftpPort = ftpPort.toIntOrNull() ?: 2121,
+                    ftpUsername = ftpUser.trim(),
+                    ftpPassword = ftpPass.trim(),
+                    autoSyncMode = syncMode
+                )
+                onSaveConfig(newConfig)
+                saveConfirmation = true
+            },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = CyanPrimary,
+                contentColor = Color(0xFF0B1120)
+            ),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("save_settings_button")
+        ) {
+            Icon(
+                imageVector = Icons.Default.Save,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Save Server Configuration", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+
+        if (saveConfirmation) {
+            Text(
+                text = "✓ Settings saved successfully!",
+                color = EmeraldSuccess,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun SyncModeOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onSelect,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = CyanPrimary,
+                unselectedColor = Slate600
+            )
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 6.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (selected) Color.White else Slate400
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = Slate600
+            )
+        }
+    }
+}
+
+@Composable
+private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = CyanPrimary,
+    unfocusedBorderColor = Slate800,
+    focusedLabelColor = CyanGlow,
+    unfocusedLabelColor = Slate400,
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    cursorColor = CyanPrimary,
+    focusedContainerColor = Color(0xFF0F172A),
+    unfocusedContainerColor = Color(0xFF0F172A)
+)

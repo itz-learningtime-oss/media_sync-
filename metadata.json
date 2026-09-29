@@ -1,0 +1,7 @@
+{
+  "name": "Media Sync Bridge",
+  "description": "Cross-platform background media listener and instant PC transfer bridge via HTTP and FTP",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

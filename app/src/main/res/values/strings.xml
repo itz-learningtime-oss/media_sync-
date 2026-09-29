@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">MediaSync</string>
+    <string name="service_name">Media Observer Service</string>
+    <string name="service_description">Monitors newly saved photos and screenshots for instant PC transfer</string>
+    <string name="action_send_http">Send via Wi-Fi (HTTP)</string>
+    <string name="action_send_ftp">Send via FTP</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="channel_service_name">Media Listener Service</string>
+    <string name="channel_service_desc">Keeps background media detector active</string>
+    <string name="channel_detect_name">New Media Detected</string>
+    <string name="channel_detect_desc">Notifications when a photo or screenshot is taken</string>
+    <string name="channel_transfer_name">File Transfer Status</string>
+    <string name="channel_transfer_desc">Progress and completion of PC transfers</string>
+</resources>
