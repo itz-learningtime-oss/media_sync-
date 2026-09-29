@@ -2,7 +2,6 @@ package com.example.ui.theme
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -10,61 +9,63 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = CyanPrimary,
-    onPrimary = Slate950,
-    primaryContainer = Slate800,
-    onPrimaryContainer = CyanGlow,
-    secondary = BlueAccent,
-    onSecondary = Slate950,
-    secondaryContainer = Slate700,
-    onSecondaryContainer = Slate200,
-    tertiary = IndigoAccent,
-    background = DarkBackground,
-    onBackground = Slate50,
-    surface = DarkSurface,
-    onSurface = Slate50,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = Slate400,
-    error = RoseError,
-    onError = Slate950
-)
-
 private val LightColorScheme = lightColorScheme(
     primary = CyanPrimary,
-    onPrimary = Slate50,
-    primaryContainer = Slate200,
-    onPrimaryContainer = Slate900,
+    onPrimary = LightSurface,
+    primaryContainer = Color(0xFFE0F2FE),
+    onPrimaryContainer = Color(0xFF0369A1),
     secondary = BlueAccent,
-    onSecondary = Slate50,
-    secondaryContainer = Slate200,
-    onSecondaryContainer = Slate900,
+    onSecondary = LightSurface,
+    secondaryContainer = Color(0xFFDBEAFE),
+    onSecondaryContainer = Color(0xFF1E40AF),
     tertiary = IndigoAccent,
-    background = Slate50,
-    onBackground = Slate900,
-    surface = Slate50,
-    onSurface = Slate900,
-    surfaceVariant = Slate200,
-    onSurfaceVariant = Slate700,
+    background = LightBackground,
+    onBackground = LightTextPrimary,
+    surface = LightSurface,
+    onSurface = LightTextPrimary,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightTextSecondary,
     error = RoseError,
-    onError = Slate50
+    onError = LightSurface,
+    outline = LightCardBorder
+)
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Color(0xFF38BDF8),
+    onPrimary = DarkBackground,
+    primaryContainer = DarkSurfaceVariant,
+    onPrimaryContainer = Color(0xFF7DD3FC),
+    secondary = BlueAccent,
+    onSecondary = DarkBackground,
+    secondaryContainer = DarkSurfaceVariant,
+    onSecondaryContainer = Color(0xFF93C5FD),
+    tertiary = IndigoAccent,
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    error = RoseError,
+    onError = DarkBackground,
+    outline = DarkCardBorder
 )
 
 @Composable
 fun MediaSyncTheme(
-    darkTheme: Boolean = true, // Default to sleek dark theme
+    darkTheme: Boolean = false, // Light theme by default
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext
-                .current
+            val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColorScheme
@@ -74,7 +75,7 @@ fun MediaSyncTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
+            window.statusBarColor = colorScheme.surface.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }

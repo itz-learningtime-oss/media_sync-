@@ -48,12 +48,8 @@ import com.example.data.model.TransferProtocol
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.IndigoAccent
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate700
-import com.example.ui.theme.Slate800
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,9 +72,10 @@ fun MediaItemCard(
             .testTag("media_item_card_${media.mediaStoreId}"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = DarkSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
@@ -94,7 +91,7 @@ fun MediaItemCard(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Slate800),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
@@ -111,15 +108,15 @@ fun MediaItemCard(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(2.dp)
+                            .padding(3.dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF0F172A).copy(alpha = 0.85f))
+                            .background(Color(0xFF0F172A).copy(alpha = 0.75f))
                             .padding(2.dp)
                     ) {
                         Icon(
                             imageVector = if (media.isScreenshot) Icons.Default.CropSquare else Icons.Default.CameraAlt,
                             contentDescription = null,
-                            tint = if (media.isScreenshot) AmberWarning else CyanGlow,
+                            tint = if (media.isScreenshot) AmberWarning else Color.White,
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -140,7 +137,7 @@ fun MediaItemCard(
                             text = media.displayName,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
@@ -149,7 +146,7 @@ fun MediaItemCard(
                         Text(
                             text = timeFormatted,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Slate400
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -164,8 +161,8 @@ fun MediaItemCard(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(
-                                    if (media.isScreenshot) AmberWarning.copy(alpha = 0.2f)
-                                    else IndigoAccent.copy(alpha = 0.2f)
+                                    if (media.isScreenshot) AmberWarning.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.primaryContainer
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
@@ -173,7 +170,7 @@ fun MediaItemCard(
                                 text = if (media.isScreenshot) "SCREENSHOT" else "CAMERA",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (media.isScreenshot) AmberWarning else CyanGlow
+                                color = if (media.isScreenshot) AmberWarning else MaterialTheme.colorScheme.primary
                             )
                         }
 
@@ -181,7 +178,7 @@ fun MediaItemCard(
                         Text(
                             text = media.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Slate400,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
                         )
 
@@ -189,7 +186,7 @@ fun MediaItemCard(
                             Text(
                                 text = "• ${media.bucketName}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Slate400,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -208,8 +205,8 @@ fun MediaItemCard(
                 ElevatedButton(
                     onClick = onSendHttp,
                     colors = ButtonDefaults.elevatedButtonColors(
-                        containerColor = CyanPrimary.copy(alpha = 0.15f),
-                        contentColor = CyanGlow
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                     ),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
@@ -229,8 +226,8 @@ fun MediaItemCard(
                 FilledTonalButton(
                     onClick = onSendFtp,
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Slate700,
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier

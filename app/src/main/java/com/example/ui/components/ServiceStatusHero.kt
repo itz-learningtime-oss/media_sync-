@@ -27,8 +27,8 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Lan
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,6 +37,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -59,11 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate600
-import com.example.ui.theme.Slate800
 import kotlinx.coroutines.delay
 
 @Composable
@@ -75,6 +72,7 @@ fun ServiceStatusHero(
     onToggleService: (Boolean) -> Unit,
     onTriggerScan: () -> Unit,
     onSimulateScreenshot: () -> Unit,
+    onOpenQrPairing: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var uptimeString by remember { mutableStateOf("00:00:00") }
@@ -106,7 +104,7 @@ fun ServiceStatusHero(
     )
 
     val glowColor by animateColorAsState(
-        targetValue = if (isRunning) EmeraldSuccess else Slate600,
+        targetValue = if (isRunning) EmeraldSuccess else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         label = "glowColor"
     )
 
@@ -116,23 +114,23 @@ fun ServiceStatusHero(
             .testTag("service_status_hero_card"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = DarkSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isRunning) CyanPrimary.copy(alpha = 0.4f) else Slate800
+            if (isRunning) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.radialGradient(
+                    Brush.verticalGradient(
                         colors = listOf(
-                            if (isRunning) CyanPrimary.copy(alpha = 0.15f) else Color.Transparent,
+                            if (isRunning) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else Color.Transparent,
                             Color.Transparent
-                        ),
-                        radius = 800f
+                        )
                     )
                 )
                 .padding(20.dp)
@@ -156,7 +154,7 @@ fun ServiceStatusHero(
                                         .size(24.dp)
                                         .scale(pulseScale)
                                         .clip(CircleShape)
-                                        .background(glowColor.copy(alpha = 0.35f))
+                                        .background(glowColor.copy(alpha = 0.3f))
                                 )
                             }
                             Box(
@@ -171,16 +169,16 @@ fun ServiceStatusHero(
 
                         Column {
                             Text(
-                                text = if (isRunning) "BI-DIRECTIONAL SYNC ACTIVE" else "BRIDGE PAUSED",
+                                text = if (isRunning) "BI-DIRECTIONAL ACTIVE" else "BRIDGE PAUSED",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isRunning) CyanGlow else Slate400,
-                                letterSpacing = 1.2.sp
+                                color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 1.1.sp
                             )
                             Text(
-                                text = if (isRunning) "Observer + HTTP Receiver on :8080" else "Foreground Service Off",
+                                text = if (isRunning) "Observer + HTTP Server on :8080" else "Foreground Service Off",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Slate400
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -190,10 +188,10 @@ fun ServiceStatusHero(
                         checked = isRunning,
                         onCheckedChange = onToggleService,
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = CyanPrimary,
-                            uncheckedThumbColor = Slate400,
-                            uncheckedTrackColor = Slate800
+                            checkedThumbColor = MaterialTheme.colorScheme.surface,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                         ),
                         modifier = Modifier.testTag("service_toggle_switch")
                     )
@@ -206,7 +204,7 @@ fun ServiceStatusHero(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF0F172A).copy(alpha = 0.7f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(vertical = 12.dp, horizontal = 16.dp),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
@@ -214,7 +212,7 @@ fun ServiceStatusHero(
                         label = "Uptime",
                         value = uptimeString,
                         icon = Icons.Default.FlashOn,
-                        tint = CyanGlow
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     StatPill(
                         label = "Captured",
@@ -223,7 +221,7 @@ fun ServiceStatusHero(
                         tint = EmeraldSuccess
                     )
                     StatPill(
-                        label = "Port",
+                        label = "Phone Port",
                         value = ":8080",
                         icon = Icons.Default.Lan,
                         tint = AmberWarning
@@ -232,28 +230,53 @@ fun ServiceStatusHero(
 
                 if (isRunning) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    // Phone Receiver endpoint pill
+                    // Phone Receiver endpoint pill & QR pairing quick trigger
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(CyanPrimary.copy(alpha = 0.1f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = null,
-                            tint = CyanGlow,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "PC can POST to: http://$serverIp:8080/receive",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CyanGlow,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Phone: http://$serverIp:8080",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = onOpenQrPairing,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "Scan PC QR",
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Scan PC QR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
@@ -267,8 +290,8 @@ fun ServiceStatusHero(
                     Button(
                         onClick = onTriggerScan,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = CyanPrimary,
-                            contentColor = Color(0xFF0B1120)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
@@ -287,8 +310,8 @@ fun ServiceStatusHero(
                     FilledTonalButton(
                         onClick = onSimulateScreenshot,
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Slate800,
-                            contentColor = CyanGlow
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
@@ -328,7 +351,7 @@ private fun StatPill(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = Slate400
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(modifier = Modifier.height(2.dp))
@@ -336,7 +359,7 @@ private fun StatPill(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }

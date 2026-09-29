@@ -101,6 +101,15 @@ class MediaTransferRepository(
         httpClient.pingServer(config.pcHostIp, config.httpPort)
     }
 
+    suspend fun testPing(hostIp: String, port: Int): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val isSuccess = httpClient.pingServer(hostIp, port)
+        if (isSuccess) {
+            Pair(true, "HTTP 200: Server Reachable")
+        } else {
+            Pair(false, "No response from $hostIp:$port")
+        }
+    }
+
     suspend fun transferFile(
         fileUri: Uri,
         fileName: String,

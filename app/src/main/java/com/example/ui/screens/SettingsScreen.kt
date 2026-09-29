@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Http
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
@@ -65,12 +66,8 @@ import com.example.data.model.ServerConfig
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.RoseError
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate600
-import com.example.ui.theme.Slate800
 
 @Composable
 fun SettingsScreen(
@@ -80,6 +77,7 @@ fun SettingsScreen(
     onSaveConfig: (ServerConfig) -> Unit,
     onTestConnection: () -> Unit,
     onShowCompanionScript: () -> Unit,
+    onOpenQrPairing: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var pcHost by remember(currentConfig) { mutableStateOf(currentConfig.pcHostIp) }
@@ -100,19 +98,82 @@ fun SettingsScreen(
             .testTag("settings_screen"),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Section 0: QR Pairing Card for PC App (Seamless discovery)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.QrCode,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Scan PC QR Code / Pairing",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Scan the QR code shown in the PC Connect app using your phone camera or gallery to auto-fill IP and connect seamlessly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = onOpenQrPairing,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("open_qr_pair_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCode,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Show QR", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
         // Section 1: PC Target IP & Connection
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Computer,
                         contentDescription = null,
-                        tint = CyanGlow,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -120,7 +181,7 @@ fun SettingsScreen(
                         text = "Target PC Address",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -147,8 +208,8 @@ fun SettingsScreen(
                         onClick = onTestConnection,
                         enabled = !isTestingConnection,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Slate800,
-                            contentColor = CyanGlow
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -158,7 +219,7 @@ fun SettingsScreen(
                         if (isTestingConnection) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = CyanGlow,
+                                color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp
                             )
                         } else {
@@ -175,8 +236,8 @@ fun SettingsScreen(
                     FilledTonalButton(
                         onClick = onShowCompanionScript,
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = CyanPrimary.copy(alpha = 0.15f),
-                            contentColor = CyanGlow
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -209,15 +270,16 @@ fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Http,
                         contentDescription = null,
-                        tint = CyanGlow,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -225,7 +287,7 @@ fun SettingsScreen(
                         text = "HTTP Protocol (FastAPI)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -265,15 +327,16 @@ fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Send,
                         contentDescription = null,
-                        tint = Color(0xFFA5B4FC),
+                        tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -281,7 +344,7 @@ fun SettingsScreen(
                         text = "FTP Protocol (pyftpdlib)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -335,8 +398,9 @@ fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -351,7 +415,7 @@ fun SettingsScreen(
                         text = "Detection Action Behavior",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -396,8 +460,8 @@ fun SettingsScreen(
                 saveConfirmation = true
             },
             colors = ButtonDefaults.buttonColors(
-                containerColor = CyanPrimary,
-                contentColor = Color(0xFF0B1120)
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier
@@ -444,8 +508,8 @@ private fun SyncModeOption(
             selected = selected,
             onClick = onSelect,
             colors = RadioButtonDefaults.colors(
-                selectedColor = CyanPrimary,
-                unselectedColor = Slate600
+                selectedColor = MaterialTheme.colorScheme.primary,
+                unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
         Column(
@@ -457,12 +521,12 @@ private fun SyncModeOption(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = if (selected) Color.White else Slate400
+                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = Slate600
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -470,13 +534,13 @@ private fun SyncModeOption(
 
 @Composable
 private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = CyanPrimary,
-    unfocusedBorderColor = Slate800,
-    focusedLabelColor = CyanGlow,
-    unfocusedLabelColor = Slate400,
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
-    cursorColor = CyanPrimary,
-    focusedContainerColor = Color(0xFF0F172A),
-    unfocusedContainerColor = Color(0xFF0F172A)
+    focusedBorderColor = MaterialTheme.colorScheme.primary,
+    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+    focusedLabelColor = MaterialTheme.colorScheme.primary,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    cursorColor = MaterialTheme.colorScheme.primary,
+    focusedContainerColor = MaterialTheme.colorScheme.surface,
+    unfocusedContainerColor = MaterialTheme.colorScheme.surface
 )

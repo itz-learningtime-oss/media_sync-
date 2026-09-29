@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Badge
@@ -64,17 +65,14 @@ import com.example.data.model.DetectedMedia
 import com.example.data.model.TransferProtocol
 import com.example.ui.MainViewModel
 import com.example.ui.components.MediaDetailModal
+import com.example.ui.components.QrConnectModal
 import com.example.ui.screens.CompanionScriptDialog
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkBackground
-import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.MediaSyncTheme
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
 
 class MainActivity : ComponentActivity() {
 
@@ -102,7 +100,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            MediaSyncTheme(darkTheme = true) {
+            MediaSyncTheme(darkTheme = false) {
                 MainAppScreen(
                     viewModel = viewModel,
                     hasStoragePermission = hasStoragePermissionState,
@@ -207,14 +205,15 @@ fun MainAppScreen(
     val connectionStatus by viewModel.connectionStatus.collectAsStateWithLifecycle()
     val selectedMedia by viewModel.selectedMediaForDetail.collectAsStateWithLifecycle()
     val showCompanionScript by viewModel.showCompanionScriptDialog.collectAsStateWithLifecycle()
+    val showQrPairing by viewModel.showQrPairingDialog.collectAsStateWithLifecycle()
     val httpSuccessCount by viewModel.httpSuccessCount.collectAsStateWithLifecycle()
     val ftpSuccessCount by viewModel.ftpSuccessCount.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground),
-        containerColor = DarkBackground,
+            .background(MaterialTheme.colorScheme.background),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -222,18 +221,32 @@ fun MainAppScreen(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
-                                .background(if (isServiceRunning) CyanGlow else Slate400, androidx.compose.foundation.shape.CircleShape)
+                                .background(
+                                    if (isServiceRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "MediaSync Bridge",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.setShowQrPairing(true) },
+                        modifier = Modifier.testTag("top_bar_qr_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCode,
+                            contentDescription = "QR Pair PC",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     IconButton(
                         onClick = { viewModel.setShowCompanionScript(true) },
                         modifier = Modifier.testTag("top_bar_script_button")
@@ -241,19 +254,19 @@ fun MainAppScreen(
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = "PC Script",
-                            tint = CyanGlow
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkSurface,
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
         bottomBar = {
             NavigationBar(
-                containerColor = DarkSurface,
+                containerColor = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .navigationBarsPadding()
                     .testTag("bottom_nav_bar")
@@ -279,8 +292,8 @@ fun MainAppScreen(
                             badge = {
                                 if (transferLogs.isNotEmpty()) {
                                     Badge(
-                                        containerColor = CyanPrimary,
-                                        contentColor = Color(0xFF0B1120)
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
                                     ) {
                                         Text("${transferLogs.size}")
                                     }
@@ -349,6 +362,9 @@ fun MainAppScreen(
                     onSimulateScreenshot = {
                         viewModel.simulateScreenshotEvent()
                     },
+                    onOpenQrPairing = {
+                        viewModel.setShowQrPairing(true)
+                    },
                     onSendHttp = { media ->
                         viewModel.transferMedia(media, TransferProtocol.HTTP)
                     },
@@ -376,10 +392,24 @@ fun MainAppScreen(
                     connectionStatus = connectionStatus,
                     onSaveConfig = { config -> viewModel.updateConfig(config) },
                     onTestConnection = { viewModel.testConnection() },
-                    onShowCompanionScript = { viewModel.setShowCompanionScript(true) }
+                    onShowCompanionScript = { viewModel.setShowCompanionScript(true) },
+                    onOpenQrPairing = { viewModel.setShowQrPairing(true) }
                 )
             }
         }
+    }
+
+    // Modal for QR Pairing with PC App
+    if (showQrPairing) {
+        QrConnectModal(
+            currentLocalIp = serverIp,
+            currentServerConfig = serverConfig,
+            onDismiss = { viewModel.setShowQrPairing(false) },
+            onSaveConfig = { newConfig -> viewModel.updateConfig(newConfig) },
+            onTestConnection = { host, port ->
+                viewModel.testPing(host, port)
+            }
+        )
     }
 
     // Modal for media details & direct action
@@ -402,9 +432,9 @@ fun MainAppScreen(
 
 @Composable
 private fun navigationItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = CyanGlow,
-    selectedTextColor = CyanGlow,
-    indicatorColor = Slate800,
-    unselectedIconColor = Slate400,
-    unselectedTextColor = Slate400
+    selectedIconColor = MaterialTheme.colorScheme.primary,
+    selectedTextColor = MaterialTheme.colorScheme.primary,
+    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 )

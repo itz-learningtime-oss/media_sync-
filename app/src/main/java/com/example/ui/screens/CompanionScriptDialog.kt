@@ -47,20 +47,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
 
 val PC_SERVER_PYTHON_SCRIPT = """
 # ==============================================================================
 # PC Receiver & Sender Script (FastAPI HTTP + pyftpdlib FTP + Phone Sender CLI)
 # Run on your PC: python server.py
-# Requirements: pip install fastapi uvicorn requests python-multipart pyftpdlib
+# Requirements: pip install fastapi uvicorn requests python-multipart pyftpdlib opencv-python pyzbar
 # ==============================================================================
 
 import os
 import shutil
 import threading
+import json
 import requests
 from fastapi import FastAPI, UploadFile, File
 import uvicorn
@@ -102,20 +100,20 @@ def send_file_to_phone(phone_ip: str, file_path: str, port: int = 8080):
         except Exception as e:
             print(f"❌ Transfer error: {e}")
 
-def discover_phone(subnet_prefix="192.168.1", port=8080):
-    \"\"\"Discover Android Phone running MediaSync Bridge on LAN\"\"\"
-    print("🔍 Discovering phone on LAN...")
-    for i in range(1, 255):
-        ip = f"{subnet_prefix}.{i}"
-        try:
-            r = requests.get(f"http://{ip}:{port}/ping", timeout=0.15)
-            if r.status_code == 200:
-                data = r.json()
-                print(f"✨ Discovered Android Phone at {ip}: {data}")
-                return ip
-        except Exception:
-            pass
-    return None
+def pair_with_qr_code(qr_json_string: str):
+    \"\"\"Pair PC app with Android Phone using scanned QR code payload\"\"\"
+    try:
+        config = json.loads(qr_json_string)
+        phone_ip = config.get("ip")
+        phone_port = config.get("http_port", 8080)
+        print(f"✨ Paired with Phone: {phone_ip}:{phone_port} ({config.get('device')})")
+        # Test ping
+        r = requests.get(f"http://{phone_ip}:{phone_port}/ping", timeout=2)
+        print(f"📡 Ping test status: {r.status_code} - {r.text}")
+        return phone_ip, phone_port
+    except Exception as e:
+        print(f"❌ Pairing failed: {e}")
+        return None, None
 
 def start_ftp_server():
     authorizer = DummyAuthorizer()
@@ -150,8 +148,9 @@ fun CompanionScriptDialog(
                 .padding(8.dp)
                 .testTag("pc_script_dialog"),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(
                 modifier = Modifier
@@ -168,7 +167,7 @@ fun CompanionScriptDialog(
                         Icon(
                             imageVector = Icons.Default.Terminal,
                             contentDescription = null,
-                            tint = CyanGlow,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -176,14 +175,14 @@ fun CompanionScriptDialog(
                             text = "PC Companion Script",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = Slate400
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -191,9 +190,9 @@ fun CompanionScriptDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Save this script as `server.py` on your PC. It receives files on port 8000 & FTP 2121, and includes the helper function to push files back to the phone on port 8080 (`/receive` and `/ping`).",
+                    text = "Save this script as `server.py` on your PC. It receives files on port 8000 & FTP 2121, and includes QR code pairing + file send helpers.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Slate400
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -204,7 +203,7 @@ fun CompanionScriptDialog(
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF070B14))
+                        .background(Color(0xFF0F172A))
                         .padding(12.dp)
                         .verticalScroll(rememberScrollState())
                         .horizontalScroll(rememberScrollState())
@@ -212,7 +211,7 @@ fun CompanionScriptDialog(
                     SelectionContainer {
                         Text(
                             text = PC_SERVER_PYTHON_SCRIPT,
-                            color = CyanGlow,
+                            color = Color(0xFF38BDF8),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
                             lineHeight = 15.sp
@@ -230,8 +229,8 @@ fun CompanionScriptDialog(
                         Toast.makeText(context, "Copied Python script to clipboard!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyanPrimary,
-                        contentColor = Color(0xFF0B1120)
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier

@@ -41,10 +41,7 @@ import com.example.data.model.TransferLog
 import com.example.ui.components.TransferLogItem
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
 
 @Composable
 fun HistoryScreen(
@@ -66,8 +63,9 @@ fun HistoryScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(
                     modifier = Modifier
@@ -79,13 +77,13 @@ fun HistoryScreen(
                         icon = Icons.Default.Http,
                         count = httpCount,
                         label = "HTTP Sent",
-                        tint = CyanGlow
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     HistoryStat(
                         icon = Icons.Default.Send,
                         count = ftpCount,
                         label = "FTP Sent",
-                        tint = Color(0xFFA5B4FC)
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                     HistoryStat(
                         icon = Icons.Default.CheckCircle,
@@ -108,7 +106,7 @@ fun HistoryScreen(
                     text = "Transfer Activity (${transferLogs.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 if (transferLogs.isNotEmpty()) {
@@ -119,7 +117,7 @@ fun HistoryScreen(
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
                             contentDescription = "Clear History",
-                            tint = Slate400
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -131,8 +129,9 @@ fun HistoryScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
                     Column(
                         modifier = Modifier
@@ -143,14 +142,14 @@ fun HistoryScreen(
                         Icon(
                             imageVector = Icons.Default.History,
                             contentDescription = null,
-                            tint = Slate400,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(36.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "No transfers recorded yet",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Slate400
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -185,12 +184,12 @@ private fun HistoryStat(
             text = "$count",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onSurface
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Slate400
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

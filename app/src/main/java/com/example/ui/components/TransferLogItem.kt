@@ -39,11 +39,8 @@ import com.example.data.model.TransferStatus
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.RoseError
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,8 +56,9 @@ fun TransferLogItem(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier
@@ -74,15 +72,15 @@ fun TransferLogItem(
                     .size(42.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(
-                        if (log.protocol == TransferProtocol.HTTP) CyanPrimary.copy(alpha = 0.15f)
-                        else Color(0xFF6366F1).copy(alpha = 0.15f)
+                        if (log.protocol == TransferProtocol.HTTP) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.secondaryContainer
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (log.protocol == TransferProtocol.HTTP) Icons.Default.Http else Icons.Default.Send,
                     contentDescription = log.protocol.name,
-                    tint = if (log.protocol == TransferProtocol.HTTP) CyanGlow else Color(0xFFA5B4FC),
+                    tint = if (log.protocol == TransferProtocol.HTTP) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -95,7 +93,7 @@ fun TransferLogItem(
                     text = log.fileName,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -105,7 +103,7 @@ fun TransferLogItem(
                 Text(
                     text = "${log.targetIp}:${log.targetPort} • $timeFormatted",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Slate400,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
 
@@ -134,26 +132,26 @@ fun TransferLogItem(
 private fun StatusBadge(status: TransferStatus, durationMs: Long) {
     val (bg, fg, icon, label) = when (status) {
         TransferStatus.SUCCESS -> Quad(
-            EmeraldSuccess.copy(alpha = 0.15f),
+            EmeraldSuccess.copy(alpha = 0.12f),
             EmeraldSuccess,
             Icons.Default.CheckCircle,
             if (durationMs > 0) "${durationMs}ms" else "Sent"
         )
         TransferStatus.FAILED -> Quad(
-            RoseError.copy(alpha = 0.15f),
+            RoseError.copy(alpha = 0.12f),
             RoseError,
             Icons.Default.Error,
             "Failed"
         )
         TransferStatus.IN_PROGRESS -> Quad(
-            AmberWarning.copy(alpha = 0.15f),
+            AmberWarning.copy(alpha = 0.12f),
             AmberWarning,
             Icons.Default.HourglassTop,
             "Sending"
         )
         TransferStatus.PENDING -> Quad(
-            Slate400.copy(alpha = 0.15f),
-            Slate400,
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
             Icons.Default.HourglassTop,
             "Queued"
         )

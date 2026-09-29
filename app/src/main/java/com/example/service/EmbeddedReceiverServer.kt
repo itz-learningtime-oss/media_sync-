@@ -11,20 +11,16 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.FileProvider
 import com.example.MainActivity
 import com.example.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.io.BufferedOutputStream
-import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -91,7 +87,7 @@ class EmbeddedReceiverServer(
 
     private fun handleClientSocket(socket: Socket) {
         socket.use { s ->
-            s.soTimeout = 30000
+            s.soTimeout = 45000
             val inputStream = s.getInputStream()
             val outputStream = s.getOutputStream()
 
@@ -99,7 +95,7 @@ class EmbeddedReceiverServer(
             val lineBuffer = ByteArrayOutputStream()
             var prevByte = -1
 
-            // Read HTTP request line and headers
+            // 1. Read HTTP request line and headers (byte-by-byte until CRLF CRLF)
             while (true) {
                 val b = inputStream.read()
                 if (b == -1) break
@@ -107,7 +103,7 @@ class EmbeddedReceiverServer(
                     val line = lineBuffer.toString(StandardCharsets.UTF_8.name()).trim()
                     lineBuffer.reset()
                     if (line.isEmpty()) {
-                        // End of headers
+                        // End of headers reached
                         break
                     }
                     headerLines.add(line)
@@ -117,7 +113,10 @@ class EmbeddedReceiverServer(
                 prevByte = b
             }
 
-            if (headerLines.isEmpty()) return
+            if (headerLines.isEmpty()) {
+                Log.w(TAG, "Received empty HTTP request headers from client")
+                return
+            }
 
             val requestLine = headerLines[0]
             val parts = requestLine.split(" ")
@@ -136,11 +135,13 @@ class EmbeddedReceiverServer(
                 }
             }
 
+            Log.i(TAG, "HTTP Request: $method $uriPath (Content-Length: ${headers["content-length"] ?: "none"}, Content-Type: ${headers["content-type"] ?: "none"})")
+
             when {
                 method == "GET" && (uriPath == "/ping" || uriPath == "/health" || uriPath == "/") -> {
                     handlePing(outputStream)
                 }
-                method == "POST" && uriPath == "/receive" -> {
+                method == "POST" && (uriPath == "/receive" || uriPath == "/upload") -> {
                     handleReceiveUpload(inputStream, outputStream, headers)
                 }
                 method == "OPTIONS" -> {
@@ -172,7 +173,7 @@ class EmbeddedReceiverServer(
         val response = "HTTP/1.1 200 OK\r\n" +
                 "Access-Control-Allow-Origin: *\r\n" +
                 "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
-                "Access-Control-Allow-Headers: Content-Type, Content-Length\r\n" +
+                "Access-Control-Allow-Headers: Content-Type, Content-Length, X-File-Name\r\n" +
                 "Content-Length: 0\r\n" +
                 "Connection: close\r\n\r\n"
         output.write(response.toByteArray(StandardCharsets.UTF_8))
@@ -187,23 +188,28 @@ class EmbeddedReceiverServer(
         val contentType = headers["content-type"] ?: ""
         val contentLength = headers["content-length"]?.toLongOrNull() ?: -1L
 
-        if (contentType.contains("multipart/form-data")) {
-            val boundaryMatch = Regex("boundary=([^;]+)").find(contentType)
+        if (contentType.contains("multipart/form-data", ignoreCase = true)) {
+            val boundaryMatch = Regex("boundary=([^;\\s]+)", RegexOption.IGNORE_CASE).find(contentType)
             val boundary = boundaryMatch?.groupValues?.get(1)?.trim()?.removeSurrounding("\"")
             if (boundary == null) {
+                Log.e(TAG, "Multipart request missing boundary parameter in Content-Type: $contentType")
                 sendJsonResponse(output, 400, JSONObject().put("error", "Missing multipart boundary").toString())
                 return
             }
             saveMultipartFile(input, output, boundary, contentLength)
         } else {
-            // Direct binary body upload with optional custom filename header
+            // Direct binary upload
             val customFilename = headers["x-file-name"]
                 ?: headers["content-disposition"]?.let { extractFilename(it) }
                 ?: "received_${System.currentTimeMillis()}.bin"
-            saveDirectStreamFile(input, output, customFilename, contentLength, contentType)
+            saveDirectStreamFile(input, output, customFilename, contentLength)
         }
     }
 
+    /**
+     * Reads multipart body from input stream without relying on inputStream.available().
+     * Uses standard ByteArray(8192) buffer loop to read all bytes up to contentLength.
+     */
     private fun saveMultipartFile(
         input: InputStream,
         output: OutputStream,
@@ -211,42 +217,68 @@ class EmbeddedReceiverServer(
         contentLength: Long
     ) {
         try {
-            val boundaryBytes = ("--$boundary").toByteArray(StandardCharsets.ISO_8859_1)
-            val headerEndMarker = "\r\n\r\n".toByteArray(StandardCharsets.ISO_8859_1)
+            Log.i(TAG, "Processing incoming multipart file upload. Boundary: '$boundary', Content-Length: $contentLength")
 
-            // Read the part headers to find filename
-            val partHeaderBuffer = ByteArrayOutputStream()
-            var prevByte = -1
-            var headerDone = false
+            // Read the full multipart payload using standard 8192 buffer loop
+            val bodyBytes = readEntireBody(input, contentLength)
+            Log.i(TAG, "Total raw multipart body bytes read from TCP stream: ${bodyBytes.size} bytes")
 
-            while (!headerDone) {
-                val b = input.read()
-                if (b == -1) break
-                partHeaderBuffer.write(b)
-                val bytes = partHeaderBuffer.toByteArray()
-                if (bytes.size >= 4) {
-                    val l = bytes.size
-                    if (bytes[l - 4] == '\r'.code.toByte() &&
-                        bytes[l - 3] == '\n'.code.toByte() &&
-                        bytes[l - 2] == '\r'.code.toByte() &&
-                        bytes[l - 1] == '\n'.code.toByte()
-                    ) {
-                        headerDone = true
-                    }
-                }
+            if (bodyBytes.isEmpty()) {
+                Log.e(TAG, "Multipart upload body is empty (0 bytes received from network)")
+                sendJsonResponse(output, 400, JSONObject().put("error", "Empty upload payload (0 bytes received)").toString())
+                return
             }
 
-            val partHeaderStr = partHeaderBuffer.toString(StandardCharsets.UTF_8.name())
+            val boundaryBytes = ("--$boundary").toByteArray(StandardCharsets.ISO_8859_1)
+            val headerSeparator = "\r\n\r\n".toByteArray(StandardCharsets.ISO_8859_1)
+
+            // Find first boundary
+            val firstBoundaryIdx = findSequence(bodyBytes, boundaryBytes, 0)
+            if (firstBoundaryIdx == -1) {
+                Log.e(TAG, "Initial boundary not found in multipart body")
+                sendJsonResponse(output, 400, JSONObject().put("error", "Invalid multipart body format").toString())
+                return
+            }
+
+            val partStart = firstBoundaryIdx + boundaryBytes.size
+            val headerEndIdx = findSequence(bodyBytes, headerSeparator, partStart)
+            if (headerEndIdx == -1) {
+                Log.e(TAG, "Part header separator not found in multipart body")
+                sendJsonResponse(output, 400, JSONObject().put("error", "Invalid multipart part headers").toString())
+                return
+            }
+
+            val partHeaderBytes = bodyBytes.copyOfRange(partStart, headerEndIdx)
+            val partHeaderStr = String(partHeaderBytes, StandardCharsets.UTF_8)
             val filename = extractFilename(partHeaderStr) ?: "pc_transfer_${System.currentTimeMillis()}.jpg"
 
-            // Save file payload to destination MediaSync folder
-            val result = saveStreamToPublicMediaSync(
-                input = input,
-                targetFileName = filename,
-                stopAtBoundary = boundaryBytes
+            val fileContentStart = headerEndIdx + headerSeparator.size
+
+            // Find closing boundary
+            val nextBoundaryIdx = findSequence(bodyBytes, boundaryBytes, fileContentStart)
+            val fileContentEnd = if (nextBoundaryIdx != -1) {
+                // Trim trailing \r\n before closing boundary
+                var end = nextBoundaryIdx
+                if (end >= 2 && bodyBytes[end - 2] == '\r'.code.toByte() && bodyBytes[end - 1] == '\n'.code.toByte()) {
+                    end -= 2
+                }
+                end
+            } else {
+                bodyBytes.size
+            }
+
+            val payloadLength = (fileContentEnd - fileContentStart).coerceAtLeast(0)
+            Log.i(TAG, "Extracted file '$filename' payload: $payloadLength bytes (from byte index $fileContentStart to $fileContentEnd)")
+
+            val result = writeByteArrayToPublicMediaSync(
+                data = bodyBytes,
+                offset = fileContentStart,
+                length = payloadLength,
+                targetFileName = filename
             )
 
             if (result != null) {
+                Log.i(TAG, "Saved multipart file '$filename' (${result.second} bytes) to disk successfully (URI: ${result.third})")
                 triggerFileReceivedNotification(result.first, result.second, result.third)
                 val json = JSONObject().apply {
                     put("status", "success")
@@ -257,7 +289,8 @@ class EmbeddedReceiverServer(
                 }
                 sendJsonResponse(output, 200, json.toString())
             } else {
-                sendJsonResponse(output, 500, JSONObject().put("error", "Failed to save file payload").toString())
+                Log.e(TAG, "Failed writing extracted payload to MediaSync storage")
+                sendJsonResponse(output, 500, JSONObject().put("error", "Failed to save file payload to disk").toString())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing multipart file upload", e)
@@ -269,17 +302,22 @@ class EmbeddedReceiverServer(
         input: InputStream,
         output: OutputStream,
         filename: String,
-        contentLength: Long,
-        mimeType: String
+        contentLength: Long
     ) {
         try {
-            val result = saveStreamToPublicMediaSync(
-                input = input,
-                targetFileName = filename,
-                exactLength = contentLength
+            Log.i(TAG, "Processing incoming direct stream upload for '$filename'. Content-Length: $contentLength")
+            val bodyBytes = readEntireBody(input, contentLength)
+            Log.i(TAG, "Total direct stream bytes read from TCP socket: ${bodyBytes.size} bytes")
+
+            val result = writeByteArrayToPublicMediaSync(
+                data = bodyBytes,
+                offset = 0,
+                length = bodyBytes.size,
+                targetFileName = filename
             )
 
             if (result != null) {
+                Log.i(TAG, "Saved direct stream file '$filename' (${result.second} bytes) to disk (URI: ${result.third})")
                 triggerFileReceivedNotification(result.first, result.second, result.third)
                 val json = JSONObject().apply {
                     put("status", "success")
@@ -299,17 +337,48 @@ class EmbeddedReceiverServer(
     }
 
     /**
-     * Saves incoming stream to Environment.DIRECTORY_DOWNLOADS/MediaSync/ using MediaStore for Android 10+
-     * and fallback to standard File I/O for older OS or external storage.
+     * Reads all bytes from the InputStream using a standard ByteArray(8192) buffer loop.
+     * NEVER uses inputStream.available()!
      */
-    private fun saveStreamToPublicMediaSync(
-        input: InputStream,
-        targetFileName: String,
-        stopAtBoundary: ByteArray? = null,
-        exactLength: Long = -1L
+    private fun readEntireBody(input: InputStream, contentLength: Long): ByteArray {
+        val baos = ByteArrayOutputStream(if (contentLength in 1..104857600L) contentLength.toInt() else 32768)
+        val buffer = ByteArray(8192)
+        var totalBytesRead = 0L
+
+        if (contentLength > 0) {
+            var remaining = contentLength
+            while (remaining > 0) {
+                val toRead = minOf(buffer.size.toLong(), remaining).toInt()
+                val bytesRead = input.read(buffer, 0, toRead)
+                if (bytesRead == -1) break
+                baos.write(buffer, 0, bytesRead)
+                totalBytesRead += bytesRead
+                remaining -= bytesRead
+            }
+        } else {
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                baos.write(buffer, 0, bytesRead)
+                totalBytesRead += bytesRead
+            }
+        }
+
+        Log.i(TAG, "readEntireBody finished: total $totalBytesRead bytes read from network socket")
+        return baos.toByteArray()
+    }
+
+    /**
+     * Writes byte array slice directly to MediaStore.Downloads/MediaSync or FileOutputStream.
+     * Flushes and closes the stream inside .use { } block.
+     * Logs exact byte count written to disk.
+     */
+    private fun writeByteArrayToPublicMediaSync(
+        data: ByteArray,
+        offset: Int,
+        length: Int,
+        targetFileName: String
     ): Triple<String, Long, Uri?>? {
         val sanitizedName = targetFileName.replace("..", "").replace("/", "_").replace("\\", "_")
-        var totalBytesWritten = 0L
         var savedUri: Uri? = null
 
         try {
@@ -327,14 +396,14 @@ class EmbeddedReceiverServer(
                 savedUri = itemUri
 
                 resolver.openOutputStream(itemUri)?.use { out ->
-                    totalBytesWritten = streamData(input, out, stopAtBoundary, exactLength)
+                    out.write(data, offset, length)
+                    out.flush()
                 }
 
                 contentValues.clear()
                 contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
                 resolver.update(itemUri, contentValues, null, null)
             } else {
-                // Android 9 and below: direct filesystem write in Downloads/MediaSync
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val targetDir = File(downloadDir, "MediaSync")
                 if (!targetDir.exists()) {
@@ -342,84 +411,32 @@ class EmbeddedReceiverServer(
                 }
                 val destFile = File(targetDir, sanitizedName)
                 FileOutputStream(destFile).use { out ->
-                    totalBytesWritten = streamData(input, out, stopAtBoundary, exactLength)
+                    out.write(data, offset, length)
+                    out.flush()
                 }
                 savedUri = Uri.fromFile(destFile)
             }
 
-            return Triple(sanitizedName, totalBytesWritten, savedUri)
+            Log.i(TAG, "writeByteArrayToPublicMediaSync: Successfully wrote $length bytes to disk for '$sanitizedName' (Target Uri: $savedUri)")
+            return Triple(sanitizedName, length.toLong(), savedUri)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed saving stream to Downloads/MediaSync", e)
+            Log.e(TAG, "Failed writing $length bytes for '$sanitizedName' to Downloads/MediaSync", e)
             return null
         }
     }
 
-    private fun streamData(
-        input: InputStream,
-        output: OutputStream,
-        stopAtBoundary: ByteArray?,
-        exactLength: Long
-    ): Long {
-        val buf = ByteArray(16384)
-        var total = 0L
-
-        if (stopAtBoundary != null) {
-            // Buffer stream and strip boundary delimiter at the end
-            val baos = ByteArrayOutputStream()
-            var bytesRead: Int
-            while (input.read(buf).also { bytesRead = it } != -1) {
-                baos.write(buf, 0, bytesRead)
-                // If stream is very large, periodically flush up to boundary safety margin
-            }
-            val fullBytes = baos.toByteArray()
-            val endIdx = findBoundaryIndex(fullBytes, stopAtBoundary)
-            val writeLen = if (endIdx != -1) {
-                // Also trim trailing \r\n before the boundary
-                var trimmed = endIdx
-                if (trimmed >= 2 && fullBytes[trimmed - 2] == '\r'.code.toByte() && fullBytes[trimmed - 1] == '\n'.code.toByte()) {
-                    trimmed -= 2
-                }
-                trimmed
-            } else {
-                fullBytes.size
-            }
-            output.write(fullBytes, 0, writeLen)
-            output.flush()
-            return writeLen.toLong()
-        } else if (exactLength > 0) {
-            var remaining = exactLength
-            while (remaining > 0) {
-                val toRead = minOf(buf.size.toLong(), remaining).toInt()
-                val read = input.read(buf, 0, toRead)
-                if (read == -1) break
-                output.write(buf, 0, read)
-                total += read
-                remaining -= read
-            }
-            output.flush()
-            return total
-        } else {
-            var read: Int
-            while (input.read(buf).also { read = it } != -1) {
-                output.write(buf, 0, read)
-                total += read
-            }
-            output.flush()
-            return total
-        }
-    }
-
-    private fun findBoundaryIndex(data: ByteArray, boundary: ByteArray): Int {
-        if (boundary.isEmpty() || data.size < boundary.size) return -1
-        for (i in 0..(data.size - boundary.size)) {
-            var found = true
-            for (j in boundary.indices) {
-                if (data[i + j] != boundary[j]) {
-                    found = false
+    private fun findSequence(source: ByteArray, target: ByteArray, startIndex: Int): Int {
+        if (target.isEmpty() || source.size < target.size || startIndex >= source.size) return -1
+        val maxSearch = source.size - target.size
+        for (i in startIndex..maxSearch) {
+            var match = true
+            for (j in target.indices) {
+                if (source[i + j] != target[j]) {
+                    match = false
                     break
                 }
             }
-            if (found) return i
+            if (match) return i
         }
         return -1
     }
@@ -461,7 +478,6 @@ class EmbeddedReceiverServer(
         val formattedSize = formatFileSize(sizeBytes)
         val notifId = (System.currentTimeMillis() % 10000).toInt() + 5000
 
-        // Intent to view the downloaded file or open the Downloads / Main App
         val viewIntent = if (fileUri != null) {
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(fileUri, context.contentResolver.getType(fileUri) ?: "*/*")

@@ -46,13 +46,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.DetectedMedia
 import com.example.data.model.TransferProtocol
-import com.example.ui.theme.CyanGlow
-import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate700
-import com.example.ui.theme.Slate800
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -75,8 +68,9 @@ fun MediaDetailModal(
                 .padding(8.dp)
                 .testTag("media_detail_dialog"),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(
                 modifier = Modifier
@@ -94,13 +88,13 @@ fun MediaDetailModal(
                         text = "Media Details",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = Slate400
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -113,7 +107,7 @@ fun MediaDetailModal(
                         .fillMaxWidth()
                         .height(200.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Slate800),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
@@ -134,7 +128,7 @@ fun MediaDetailModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurfaceVariant)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -154,7 +148,7 @@ fun MediaDetailModal(
                 Text(
                     text = "Transfer to PC",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Slate400,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -170,8 +164,8 @@ fun MediaDetailModal(
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = CyanPrimary,
-                            contentColor = Color(0xFF0B1120)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
@@ -191,8 +185,8 @@ fun MediaDetailModal(
                             onDismiss()
                         },
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Slate700,
-                            contentColor = Color.White
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
@@ -220,13 +214,13 @@ private fun DetailRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = Slate400,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.35f)
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(0.65f)
         )

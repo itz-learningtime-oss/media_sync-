@@ -2,10 +2,12 @@ package com.example.network
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
+import com.example.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
-import java.io.InputStream
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -14,6 +16,10 @@ import java.net.Socket
 import java.util.regex.Pattern
 
 class FtpTransferClient(private val context: Context) {
+
+    companion object {
+        private const val TAG = "FtpTransferClient"
+    }
 
     suspend fun uploadFile(
         hostIp: String,
@@ -28,10 +34,16 @@ class FtpTransferClient(private val context: Context) {
         var dataSocket: Socket? = null
         var reader: BufferedReader? = null
         var writer: PrintWriter? = null
-        var inputStream: InputStream? = null
+        var tempFile: File? = null
 
         try {
-            // 1. Open control connection
+            // 1. Resolve content:// URI into temporary cached File to prevent 0 KB stream issues
+            tempFile = FileUtils.getFileFromUri(context, fileUri, fileName)
+            val fileLength = tempFile.length()
+
+            Log.i(TAG, "Starting FTP upload for '$fileName'. File size: $fileLength bytes. Target: ftp://$user@$hostIp:$port")
+
+            // 2. Open control connection
             controlSocket = Socket()
             controlSocket.connect(InetSocketAddress(hostIp, port), 10000)
             controlSocket.soTimeout = 15000
@@ -79,7 +91,7 @@ class FtpTransferClient(private val context: Context) {
             val dataIp = "${matcher.group(1)}.${matcher.group(2)}.${matcher.group(3)}.${matcher.group(4)}"
             val dataPort = (matcher.group(5)!!.toInt() shl 8) + matcher.group(6)!!.toInt()
 
-            // Open Data connection (prefer hostIp if dataIp is 0.0.0.0 or internal)
+            // Open Data connection
             val resolvedDataIp = if (dataIp == "0.0.0.0" || dataIp == "127.0.0.1") hostIp else dataIp
             dataSocket = Socket()
             dataSocket.connect(InetSocketAddress(resolvedDataIp, dataPort), 10000)
@@ -92,20 +104,22 @@ class FtpTransferClient(private val context: Context) {
                 return@withContext TransferResult.Error("STOR failed: $storResp")
             }
 
-            // Stream file data
-            inputStream = context.contentResolver.openInputStream(fileUri)
-                ?: return@withContext TransferResult.Error("Failed to open file: $fileUri")
-
+            // Stream file data using standard 8192 byte buffer
             val dataOut: OutputStream = dataSocket.getOutputStream()
             val buffer = ByteArray(8192)
             var bytesRead: Int
             var totalBytesSent = 0L
 
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                dataOut.write(buffer, 0, bytesRead)
-                totalBytesSent += bytesRead
+            tempFile.inputStream().use { fileIn ->
+                while (fileIn.read(buffer).also { bytesRead = it } != -1) {
+                    dataOut.write(buffer, 0, bytesRead)
+                    totalBytesSent += bytesRead
+                }
+                dataOut.flush()
             }
-            dataOut.flush()
+
+            Log.i(TAG, "Completed streaming $totalBytesSent bytes to FTP data socket for '$fileName'")
+
             dataSocket.close()
             dataSocket = null
 
@@ -119,12 +133,14 @@ class FtpTransferClient(private val context: Context) {
 
             val duration = System.currentTimeMillis() - startTime
             if (completeResp.startsWith("226") || completeResp.startsWith("250")) {
+                Log.i(TAG, "FTP Upload Succeeded: $totalBytesSent bytes in ${duration}ms ($completeResp)")
                 TransferResult.Success(
                     bytesSent = totalBytesSent,
                     durationMs = duration,
                     message = "FTP Transfer complete: $completeResp"
                 )
             } else {
+                Log.i(TAG, "FTP Upload Finished: $totalBytesSent bytes in ${duration}ms (Response: $completeResp)")
                 TransferResult.Success(
                     bytesSent = totalBytesSent,
                     durationMs = duration,
@@ -132,17 +148,24 @@ class FtpTransferClient(private val context: Context) {
                 )
             }
         } catch (e: Exception) {
+            Log.e(TAG, "FTP Upload Exception: ${e.localizedMessage}", e)
             TransferResult.Error("FTP transfer error: ${e.localizedMessage ?: e.javaClass.simpleName}", e)
         } finally {
-            try { inputStream?.close() } catch (ignored: Exception) {}
             try { dataSocket?.close() } catch (ignored: Exception) {}
             try { controlSocket?.close() } catch (ignored: Exception) {}
+            try {
+                if (tempFile != null && tempFile.exists()) {
+                    tempFile.delete()
+                    Log.d(TAG, "Cleaned up FTP temp cache file: ${tempFile.name}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete temp cache file", e)
+            }
         }
     }
 
     private fun readResponse(reader: BufferedReader): String {
         var line = reader.readLine() ?: ""
-        // Handle multi-line responses (e.g., 220- ...)
         while (line.length >= 4 && line[3] == '-') {
             line = reader.readLine() ?: break
         }

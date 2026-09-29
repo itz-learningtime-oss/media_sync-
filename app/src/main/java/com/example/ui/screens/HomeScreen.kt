@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,10 +52,7 @@ import com.example.ui.components.ServiceStatusHero
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.EmeraldSuccess
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
 
 @Composable
 fun HomeScreen(
@@ -70,6 +68,7 @@ fun HomeScreen(
     onToggleService: (Boolean) -> Unit,
     onTriggerScan: () -> Unit,
     onSimulateScreenshot: () -> Unit,
+    onOpenQrPairing: () -> Unit,
     onSendHttp: (DetectedMedia) -> Unit,
     onSendFtp: (DetectedMedia) -> Unit,
     onSelectMedia: (DetectedMedia) -> Unit,
@@ -103,7 +102,8 @@ fun HomeScreen(
                 serverIp = serverIp,
                 onToggleService = onToggleService,
                 onTriggerScan = onTriggerScan,
-                onSimulateScreenshot = onSimulateScreenshot
+                onSimulateScreenshot = onSimulateScreenshot,
+                onOpenQrPairing = onOpenQrPairing
             )
         }
 
@@ -113,7 +113,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(DarkSurfaceVariant)
+                    .background(MaterialTheme.colorScheme.surface)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -129,7 +129,7 @@ fun HomeScreen(
                     Text(
                         text = "Target PC: ${serverConfig.pcHostIp}:${serverConfig.httpPort}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Slate400,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -137,7 +137,7 @@ fun HomeScreen(
                 Text(
                     text = "FTP :${serverConfig.ftpPort}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = CyanGlow,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -155,20 +155,20 @@ fun HomeScreen(
                         text = "Live Media Stream",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .background(CyanPrimary.copy(alpha = 0.2f))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
                             .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = "${detectedMediaList.size}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyanGlow
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -181,7 +181,7 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
                             contentDescription = "Clear List",
-                            tint = Slate400,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -224,8 +224,8 @@ private fun PermissionAlertBanner(
             .fillMaxWidth()
             .testTag("permission_alert_banner"),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = AmberWarning.copy(alpha = 0.15f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.4f))
+        colors = CardDefaults.cardColors(containerColor = AmberWarning.copy(alpha = 0.12f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier
@@ -254,7 +254,7 @@ private fun PermissionAlertBanner(
                     else if (!hasStorage) "Photos/Media access needed"
                     else "Notification permission needed for popups",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Slate400
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -264,7 +264,7 @@ private fun PermissionAlertBanner(
                 onClick = onRequestPermissions,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberWarning,
-                    contentColor = Color(0xFF0B1120)
+                    contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(10.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
@@ -283,8 +283,9 @@ private fun EmptyMediaState(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
@@ -296,13 +297,13 @@ private fun EmptyMediaState(
                 modifier = Modifier
                     .size(64.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Slate800),
+                    .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.PhotoLibrary,
                     contentDescription = null,
-                    tint = CyanGlow,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp)
                 )
             }
@@ -313,7 +314,7 @@ private fun EmptyMediaState(
                 text = "No Media Events Detected Yet",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -321,7 +322,7 @@ private fun EmptyMediaState(
             Text(
                 text = "Take a screenshot or capture a photo on your device. The ContentObserver will immediately trigger a heads-up notification!",
                 style = MaterialTheme.typography.bodySmall,
-                color = Slate400,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
 
@@ -331,8 +332,8 @@ private fun EmptyMediaState(
                 Button(
                     onClick = onSimulateScreenshot,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyanPrimary,
-                        contentColor = Color(0xFF0B1120)
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {

@@ -65,6 +65,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _showCompanionScriptDialog = MutableStateFlow(false)
     val showCompanionScriptDialog: StateFlow<Boolean> = _showCompanionScriptDialog.asStateFlow()
 
+    private val _showQrPairingDialog = MutableStateFlow(false)
+    val showQrPairingDialog: StateFlow<Boolean> = _showQrPairingDialog.asStateFlow()
+
     fun startService(context: Context) {
         val intent = Intent(context, MediaObserverService::class.java).apply {
             action = MediaObserverService.ACTION_START
@@ -116,12 +119,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _connectionStatus.value = null
     }
 
+    suspend fun testPing(hostIp: String, port: Int): Pair<Boolean, String> {
+        return repository.testPing(hostIp, port)
+    }
+
     fun selectMediaDetail(media: DetectedMedia?) {
         _selectedMediaForDetail.value = media
     }
 
     fun setShowCompanionScript(show: Boolean) {
         _showCompanionScriptDialog.value = show
+    }
+
+    fun setShowQrPairing(show: Boolean) {
+        _showQrPairingDialog.value = show
     }
 
     fun clearHistory() {
@@ -185,10 +196,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Simulates a media event (e.g. Screenshot) to demonstrate and verify the
-     * ContentObserver, system Heads-up notification with HTTP & FTP buttons, and database flow.
-     */
     fun simulateScreenshotEvent() {
         viewModelScope.launch {
             val fakeId = System.currentTimeMillis()
