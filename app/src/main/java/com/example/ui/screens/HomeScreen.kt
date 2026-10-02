@@ -26,16 +26,23 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,11 +51,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.ConnectedPeer
 import com.example.data.model.DetectedMedia
 import com.example.data.model.ServerConfig
 import com.example.data.model.TransferProtocol
+import com.example.service.ReceivedFileItem
+import com.example.ui.components.ConnectedPeersHubCard
 import com.example.ui.components.MediaItemCard
+import com.example.ui.components.ReceivedFilesCard
 import com.example.ui.components.ServiceStatusHero
+import com.example.ui.components.SharingActionHub
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
@@ -62,6 +74,10 @@ fun HomeScreen(
     serverIp: String,
     serverConfig: ServerConfig,
     detectedMediaList: List<DetectedMedia>,
+    receivedFiles: List<ReceivedFileItem> = emptyList(),
+    peers: List<ConnectedPeer> = emptyList(),
+    isDiscoveringPeers: Boolean = false,
+    discoveryProgress: Float = 0f,
     hasStoragePermission: Boolean,
     hasNotificationPermission: Boolean,
     onRequestPermissions: () -> Unit,
@@ -69,12 +85,37 @@ fun HomeScreen(
     onTriggerScan: () -> Unit,
     onSimulateScreenshot: () -> Unit,
     onOpenQrPairing: () -> Unit,
+    onPickDocuments: () -> Unit,
+    onShareApk: () -> Unit,
+    onDiscoverPeers: () -> Unit = {},
+    onTogglePeerSelection: (String) -> Unit = {},
+    onSelectAllPeers: (Boolean) -> Unit = {},
+    onAddManualPeer: (String, Int) -> Unit = { _, _ -> },
+    onRemovePeer: (String) -> Unit = {},
+    onBroadcastToPeers: () -> Unit = {},
+    onSaveReceivedToGallery: (ReceivedFileItem) -> Unit,
+    onDismissReceived: (ReceivedFileItem) -> Unit,
     onSendHttp: (DetectedMedia) -> Unit,
     onSendFtp: (DetectedMedia) -> Unit,
     onSelectMedia: (DetectedMedia) -> Unit,
     onClearDetected: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var selectedFilter by remember { mutableStateOf("All") }
+
+    val filteredList = remember(detectedMediaList, selectedFilter) {
+        when (selectedFilter) {
+            "Screenshots" -> detectedMediaList.filter { it.isScreenshot }
+            "Documents" -> detectedMediaList.filter {
+                !it.isScreenshot && (it.bucketName == "Documents" || it.mimeType?.contains("pdf") == true || it.displayName.endsWith(".doc", true) || it.displayName.endsWith(".docx", true) || it.displayName.endsWith(".zip", true))
+            }
+            "APKs" -> detectedMediaList.filter {
+                it.displayName.endsWith(".apk", ignoreCase = true) || it.mimeType == "application/vnd.android.package-archive" || it.bucketName == "Apps"
+            }
+            else -> detectedMediaList
+        }
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -82,7 +123,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Permission Warning Banner (if any required permission is missing)
+        // 1. Permission Warning Banner
         if (!hasStoragePermission || !hasNotificationPermission) {
             item(key = "permissions_banner") {
                 PermissionAlertBanner(
@@ -107,7 +148,43 @@ fun HomeScreen(
             )
         }
 
-        // 3. Quick PC Connection Summary Pill
+        // 3. Sharing Action Hub (Pick Documents, Share APK, iOS Portal)
+        item(key = "sharing_action_hub") {
+            SharingActionHub(
+                serverIp = serverIp,
+                onPickDocuments = onPickDocuments,
+                onShareApk = onShareApk,
+                onOpenIosPortal = onOpenQrPairing
+            )
+        }
+
+        // 4. Connected Mobile Peers & Group Hub Card (Multi-User Sharing)
+        item(key = "connected_peers_hub") {
+            ConnectedPeersHubCard(
+                peers = peers,
+                isDiscovering = isDiscoveringPeers,
+                discoveryProgress = discoveryProgress,
+                onDiscoverPeers = onDiscoverPeers,
+                onTogglePeerSelection = onTogglePeerSelection,
+                onSelectAll = onSelectAllPeers,
+                onAddManualPeer = onAddManualPeer,
+                onRemovePeer = onRemovePeer,
+                onBroadcastToSelected = onBroadcastToPeers
+            )
+        }
+
+        // 5. Received Files Card (Files received from PC / iOS / Other Android phones)
+        if (receivedFiles.isNotEmpty()) {
+            item(key = "received_files_section") {
+                ReceivedFilesCard(
+                    receivedFiles = receivedFiles,
+                    onSaveToGallery = onSaveReceivedToGallery,
+                    onDismiss = onDismissReceived
+                )
+            }
+        }
+
+        // 5. Quick PC Connection Summary Pill
         item(key = "pc_connection_pill") {
             Row(
                 modifier = Modifier
@@ -143,63 +220,84 @@ fun HomeScreen(
             }
         }
 
-        // 4. Detected Media Section Header
+        // 6. Detected Media & Documents Section Header with Filters
         item(key = "detected_section_header") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Live Media Stream",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                    ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "${detectedMediaList.size}",
-                            fontSize = 11.sp,
+                            text = "Live Files & Media Stream",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "${detectedMediaList.size}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    if (detectedMediaList.isNotEmpty()) {
+                        IconButton(
+                            onClick = onClearDetected,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = "Clear List",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
-                if (detectedMediaList.isNotEmpty()) {
-                    IconButton(
-                        onClick = onClearDetected,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteSweep,
-                            contentDescription = "Clear List",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                // Category Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("All", "Documents", "Screenshots", "APKs").forEach { filter ->
+                        FilterChip(
+                            selected = selectedFilter == filter,
+                            onClick = { selectedFilter = filter },
+                            label = { Text(filter, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.height(28.dp)
                         )
                     }
                 }
             }
         }
 
-        // 5. Media List or Empty State
-        if (detectedMediaList.isEmpty()) {
+        // 7. Media List or Empty State
+        if (filteredList.isEmpty()) {
             item(key = "empty_media_state") {
                 EmptyMediaState(
                     onTriggerScan = onTriggerScan,
-                    onSimulateScreenshot = onSimulateScreenshot
+                    onPickDocuments = onPickDocuments
                 )
             }
         } else {
             items(
-                items = detectedMediaList,
+                items = filteredList,
                 key = { it.mediaStoreId }
             ) { media ->
                 MediaItemCard(
@@ -250,9 +348,11 @@ private fun PermissionAlertBanner(
                     color = AmberWarning
                 )
                 Text(
-                    text = if (!hasStorage && !hasNotification) "Media access & Notifications needed"
-                    else if (!hasStorage) "Photos/Media access needed"
-                    else "Notification permission needed for popups",
+                    text = when {
+                        !hasStorage && !hasNotification -> "Storage and Notification access are needed for file sync."
+                        !hasStorage -> "Storage access required to read media and documents."
+                        else -> "Notification access required for instant transfer popups."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -264,12 +364,12 @@ private fun PermissionAlertBanner(
                 onClick = onRequestPermissions,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberWarning,
-                    contentColor = Color.White
+                    contentColor = Color.Black
                 ),
                 shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                modifier = Modifier.testTag("grant_permissions_button")
             ) {
-                Text("Grant", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Grant", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -278,41 +378,46 @@ private fun PermissionAlertBanner(
 @Composable
 private fun EmptyMediaState(
     onTriggerScan: () -> Unit,
-    onSimulateScreenshot: () -> Unit
+    onPickDocuments: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("empty_media_card"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(56.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.PhotoLibrary,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "No Media Events Detected Yet",
-                style = MaterialTheme.typography.titleMedium,
+                text = "No files in transfer queue",
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -320,30 +425,38 @@ private fun EmptyMediaState(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Take a screenshot or capture a photo on your device. The ContentObserver will immediately trigger a heads-up notification!",
+                text = "Take a screenshot, snap a photo, or choose any document to share instantly via Wi-Fi or Web Browser.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 18.sp
             )
 
             Spacer(modifier = Modifier.height(18.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = onSimulateScreenshot,
+                    onClick = onPickDocuments,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Simulate Screenshot", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Select Documents", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onTriggerScan,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Scan Photos", fontSize = 12.sp)
                 }
             }
         }

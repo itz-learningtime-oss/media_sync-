@@ -3,9 +3,12 @@ package com.example
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,9 +66,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.DetectedMedia
 import com.example.data.model.TransferProtocol
+import com.example.service.PeerConnectionManager
 import com.example.ui.MainViewModel
+import com.example.ui.components.IncomingTransferDialog
 import com.example.ui.components.MediaDetailModal
+import com.example.ui.components.MultiPeerShareDialog
 import com.example.ui.components.QrConnectModal
+import com.example.ui.components.UpdateAvailableDialog
 import com.example.ui.screens.CompanionScriptDialog
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.HomeScreen
@@ -96,6 +103,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        PeerConnectionManager.init(this)
         checkPermissions()
         handleIntent(intent)
 
@@ -119,6 +127,66 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
+
+        val action = intent.action
+        if (Intent.ACTION_SEND == action) {
+            val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            } ?: intent.data ?: intent.clipData?.getItemAt(0)?.uri
+
+            if (streamUri != null) {
+                val (name, size, mime) = com.example.util.FileUtils.queryFileInfo(this, streamUri)
+                val sharedItem = com.example.service.SharedFileItem(
+                    name = name,
+                    uri = streamUri,
+                    sizeBytes = size,
+                    mimeType = mime,
+                    isApk = name.endsWith(".apk", ignoreCase = true)
+                )
+                com.example.service.SharedFileRegistry.addFile(sharedItem)
+                com.example.service.EmbeddedServerManager.startServer(this)
+                Toast.makeText(this, "✓ Ready to share \"$name\" with mobile group & web!", Toast.LENGTH_LONG).show()
+                viewModel.discoverPeers(this)
+                viewModel.openMultiPeerShareDialog()
+            }
+        } else if (Intent.ACTION_SEND_MULTIPLE == action) {
+            val streamUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            } ?: mutableListOf<Uri>().apply {
+                intent.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) {
+                        clip.getItemAt(i)?.uri?.let { add(it) }
+                    }
+                }
+            }
+
+            if (!streamUris.isNullOrEmpty()) {
+                var count = 0
+                for (uri in streamUris) {
+                    val (name, size, mime) = com.example.util.FileUtils.queryFileInfo(this, uri)
+                    val sharedItem = com.example.service.SharedFileItem(
+                        name = name,
+                        uri = uri,
+                        sizeBytes = size,
+                        mimeType = mime,
+                        isApk = name.endsWith(".apk", ignoreCase = true)
+                    )
+                    com.example.service.SharedFileRegistry.addFile(sharedItem)
+                    count++
+                }
+                com.example.service.EmbeddedServerManager.startServer(this)
+                Toast.makeText(this, "✓ Ready to share $count files with mobile group & web!", Toast.LENGTH_LONG).show()
+                viewModel.discoverPeers(this)
+                viewModel.openMultiPeerShareDialog()
+            }
+        }
+
         val mediaId = intent.getLongExtra("EXTRA_MEDIA_ID", -1L)
         val mediaUri = intent.getStringExtra("EXTRA_MEDIA_URI")
         val mediaName = intent.getStringExtra("EXTRA_MEDIA_NAME")
@@ -208,6 +276,28 @@ fun MainAppScreen(
     val showQrPairing by viewModel.showQrPairingDialog.collectAsStateWithLifecycle()
     val httpSuccessCount by viewModel.httpSuccessCount.collectAsStateWithLifecycle()
     val ftpSuccessCount by viewModel.ftpSuccessCount.collectAsStateWithLifecycle()
+    val receivedFiles by viewModel.receivedFiles.collectAsStateWithLifecycle()
+    val availableUpdate by viewModel.availableUpdate.collectAsStateWithLifecycle()
+    val isDownloadingUpdate by viewModel.isDownloadingUpdate.collectAsStateWithLifecycle()
+    val updateDownloadProgress by viewModel.updateDownloadProgress.collectAsStateWithLifecycle()
+
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
+    val isDiscoveringPeers by viewModel.isDiscoveringPeers.collectAsStateWithLifecycle()
+    val discoveryProgress by viewModel.discoveryProgress.collectAsStateWithLifecycle()
+    val showMultiPeerDialog by viewModel.showMultiPeerShareDialog.collectAsStateWithLifecycle()
+    val isBroadcasting by viewModel.isBroadcasting.collectAsStateWithLifecycle()
+    val sharedFiles by viewModel.sharedFiles.collectAsStateWithLifecycle()
+    val incomingTransferRequest by PeerConnectionManager.incomingRequest.collectAsStateWithLifecycle()
+
+    val documentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.registerPickedDocuments(uris, context)
+            viewModel.discoverPeers(context)
+            viewModel.openMultiPeerShareDialog()
+        }
+    }
 
     Scaffold(
         modifier = Modifier
@@ -338,6 +428,7 @@ fun MainAppScreen(
                     serverIp = serverIp,
                     serverConfig = serverConfig,
                     detectedMediaList = detectedList,
+                    receivedFiles = receivedFiles,
                     hasStoragePermission = hasStoragePermission,
                     hasNotificationPermission = hasNotificationPermission,
                     onRequestPermissions = onRequestPermissions,
@@ -364,6 +455,24 @@ fun MainAppScreen(
                     },
                     onOpenQrPairing = {
                         viewModel.setShowQrPairing(true)
+                    },
+                    onPickDocuments = {
+                        documentPickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    onShareApk = {
+                        viewModel.shareApkViaSystem(context)
+                    },
+                    onDiscoverPeers = { viewModel.discoverPeers(context) },
+                    onTogglePeerSelection = { id -> viewModel.togglePeerSelection(id) },
+                    onSelectAllPeers = { select -> viewModel.selectAllPeers(select) },
+                    onAddManualPeer = { ip, port -> viewModel.addManualPeer(ip, port) },
+                    onRemovePeer = { id -> viewModel.removePeer(id) },
+                    onBroadcastToPeers = { viewModel.openMultiPeerShareDialog() },
+                    onSaveReceivedToGallery = { file ->
+                        viewModel.saveReceivedFileToGallery(context, file)
+                    },
+                    onDismissReceived = { file ->
+                        viewModel.dismissReceivedFile(file)
                     },
                     onSendHttp = { media ->
                         viewModel.transferMedia(media, TransferProtocol.HTTP)
@@ -393,7 +502,9 @@ fun MainAppScreen(
                     onSaveConfig = { config -> viewModel.updateConfig(config) },
                     onTestConnection = { viewModel.testConnection() },
                     onShowCompanionScript = { viewModel.setShowCompanionScript(true) },
-                    onOpenQrPairing = { viewModel.setShowQrPairing(true) }
+                    onOpenQrPairing = { viewModel.setShowQrPairing(true) },
+                    onShareApk = { viewModel.shareApkViaSystem(context) },
+                    onCheckUpdates = { viewModel.checkForPeerAppUpdate(serverConfig.pcHostIp, serverConfig.httpPort, showUpToDateToast = true) }
                 )
             }
         }
@@ -408,6 +519,12 @@ fun MainAppScreen(
             onSaveConfig = { newConfig -> viewModel.updateConfig(newConfig) },
             onTestConnection = { host, port ->
                 viewModel.testPing(host, port)
+            },
+            onShareApk = {
+                viewModel.shareApkViaSystem(context)
+            },
+            onCheckUpdate = { host, port, token ->
+                viewModel.checkForPeerAppUpdate(host, port, token)
             }
         )
     }
@@ -426,6 +543,52 @@ fun MainAppScreen(
     if (showCompanionScript) {
         CompanionScriptDialog(
             onDismiss = { viewModel.setShowCompanionScript(false) }
+        )
+    }
+
+    // Modal for Multi-Peer Group Broadcast
+    if (showMultiPeerDialog) {
+        MultiPeerShareDialog(
+            sharedFiles = sharedFiles,
+            peers = peers,
+            isSending = isBroadcasting,
+            isDiscovering = isDiscoveringPeers,
+            onDiscoverPeers = { viewModel.discoverPeers(context) },
+            onTogglePeerSelection = { id -> viewModel.togglePeerSelection(id) },
+            onSelectAll = { select -> viewModel.selectAllPeers(select) },
+            onSendToSelectedPeers = { selectedPeers, selectedFiles ->
+                viewModel.broadcastFiles(context, selectedPeers, selectedFiles.map { it.uri })
+            },
+            onDismiss = { viewModel.closeMultiPeerShareDialog() }
+        )
+    }
+
+    // Modal for Incoming Peer Connection & File Transfer Request
+    val currentReq = incomingTransferRequest
+    if (currentReq != null) {
+        IncomingTransferDialog(
+            request = currentReq,
+            onAccept = { rememberDevice ->
+                PeerConnectionManager.acceptRequest(context, currentReq.id, rememberDevice)
+            },
+            onDecline = {
+                PeerConnectionManager.declineRequest(context, currentReq.id)
+            }
+        )
+    }
+
+    // Modal for Self-Updating APK notification & install prompt
+    if (availableUpdate != null) {
+        UpdateAvailableDialog(
+            updateInfo = availableUpdate!!,
+            isDownloading = isDownloadingUpdate,
+            downloadProgress = updateDownloadProgress,
+            onConfirmInstall = {
+                viewModel.downloadAndInstallUpdate(context)
+            },
+            onDismiss = {
+                viewModel.dismissUpdateDialog()
+            }
         )
     }
 }

@@ -18,11 +18,12 @@ object FileUtils {
      */
     fun getFileFromUri(context: Context, uri: Uri, fallbackName: String? = null): File {
         val resolvedName = getFileNameFromUri(context, uri) ?: fallbackName ?: "upload_${System.currentTimeMillis()}.bin"
-        val sanitizedName = resolvedName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val cacheDir = File(context.cacheDir, "transfer_temp").apply {
+        val cleanName = resolvedName.replace(Regex("^temp_\\d+_"), "").replace(Regex("^temp_"), "")
+        val sanitizedName = cleanName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val sessionDir = File(context.cacheDir, "transfer_temp_${System.currentTimeMillis()}").apply {
             if (!exists()) mkdirs()
         }
-        val tempFile = File(cacheDir, "temp_${System.currentTimeMillis()}_$sanitizedName")
+        val tempFile = File(sessionDir, sanitizedName)
 
         var totalBytesCopied = 0L
         try {
@@ -54,6 +55,64 @@ object FileUtils {
         }
 
         return tempFile
+    }
+
+    /**
+     * Queries display name, byte size, and MIME type for any content Uri (e.g. from Gallery / File Manager share).
+     */
+    fun queryFileInfo(context: Context, uri: Uri): Triple<String, Long, String> {
+        var name = "Shared_File_${System.currentTimeMillis()}"
+        var size = 0L
+        var mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+
+        if (uri.scheme == "content") {
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (cursor.moveToFirst()) {
+                        if (nameIdx != -1) {
+                            cursor.getString(nameIdx)?.let { if (it.isNotBlank()) name = it }
+                        }
+                        if (sizeIdx != -1) {
+                            size = cursor.getLong(sizeIdx)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not query metadata for content uri: $uri", e)
+            }
+        } else if (uri.scheme == "file") {
+            uri.lastPathSegment?.let { name = it }
+            val f = File(uri.path ?: "")
+            if (f.exists()) {
+                size = f.length()
+            }
+        }
+
+        name = name.replace(Regex("^temp_\\d+_"), "").replace(Regex("^temp_"), "")
+
+        if (mime == "application/octet-stream") {
+            val extension = name.substringAfterLast('.', "").lowercase()
+            mime = when (extension) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "webp" -> "image/webp"
+                "mp4" -> "video/mp4"
+                "mkv" -> "video/x-matroska"
+                "mov" -> "video/quicktime"
+                "mp3" -> "audio/mpeg"
+                "wav" -> "audio/wav"
+                "pdf" -> "application/pdf"
+                "apk" -> "application/vnd.android.package-archive"
+                "zip" -> "application/zip"
+                "txt" -> "text/plain"
+                else -> "application/octet-stream"
+            }
+        }
+
+        return Triple(name, size, mime)
     }
 
     private fun getFileNameFromUri(context: Context, uri: Uri): String? {

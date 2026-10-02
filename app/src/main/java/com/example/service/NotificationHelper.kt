@@ -22,9 +22,11 @@ object NotificationHelper {
     const val CHANNEL_FOREGROUND_SERVICE = "channel_media_sync_service"
     const val CHANNEL_MEDIA_DETECTED = "channel_media_detected_alert"
     const val CHANNEL_TRANSFER_STATUS = "channel_media_transfer_status"
+    const val CHANNEL_PEER_TRANSFER_REQUEST = "channel_peer_transfer_request"
 
     const val NOTIFICATION_ID_FOREGROUND = 1001
     const val NOTIFICATION_ID_TRANSFER_BASE = 2000
+    const val NOTIFICATION_ID_PEER_REQUEST = 3001
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -63,8 +65,20 @@ object NotificationHelper {
                 setShowBadge(false)
             }
 
+            // 4. Peer Connection & Transfer Request Channel (HIGH importance)
+            val peerRequestChannel = NotificationChannel(
+                CHANNEL_PEER_TRANSFER_REQUEST,
+                "Peer Connection & Transfer Requests",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when another mobile device requests to pair and send files"
+                enableVibration(true)
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+
             notificationManager.createNotificationChannels(
-                listOf(serviceChannel, detectionChannel, transferChannel)
+                listOf(serviceChannel, detectionChannel, transferChannel, peerRequestChannel)
             )
         }
     }
@@ -266,6 +280,97 @@ object NotificationHelper {
         try {
             NotificationManagerCompat.from(context).cancel(notificationId)
         } catch (ignored: Exception) {}
+    }
+
+    fun showPeerTransferRequestNotification(
+        context: Context,
+        request: IncomingTransferRequest
+    ) {
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            context,
+            10,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val acceptIntent = Intent(context, TransferActionReceiver::class.java).apply {
+            action = TransferActionReceiver.ACTION_ACCEPT_TRANSFER_REQUEST
+            putExtra(TransferActionReceiver.EXTRA_REQUEST_ID, request.id)
+        }
+        val acceptPendingIntent = PendingIntent.getBroadcast(
+            context,
+            11,
+            acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val declineIntent = Intent(context, TransferActionReceiver::class.java).apply {
+            action = TransferActionReceiver.ACTION_DECLINE_TRANSFER_REQUEST
+            putExtra(TransferActionReceiver.EXTRA_REQUEST_ID, request.id)
+        }
+        val declinePendingIntent = PendingIntent.getBroadcast(
+            context,
+            12,
+            declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val filesText = if (request.fileCount == 1) {
+            request.fileNames.firstOrNull() ?: "1 file"
+        } else {
+            "${request.fileCount} files (${request.formattedSize})"
+        }
+
+        val title = if (request.isSavedPeer) {
+            "📥 Incoming Files from ${request.senderDevice}"
+        } else {
+            "🔗 Build Connection with ${request.senderDevice}?"
+        }
+
+        val shortText = if (request.isSavedPeer) {
+            "Saved peer wants to send $filesText. Confirm to receive?"
+        } else {
+            "${request.senderDevice} wants to connect & send $filesText. Connect & receive?"
+        }
+
+        val bigText = if (request.isSavedPeer) {
+            "${request.senderDevice} (${request.senderIp}) wants to send $filesText.\nConfirm to receive these files on your phone."
+        } else {
+            "${request.senderDevice} (${request.senderIp}) wants to build a connection with your phone and share $filesText.\nAccepting will save this connection on both mobiles for future sharing convenience and receive the files."
+        }
+
+        val acceptButtonLabel = if (request.isSavedPeer) "✓ Receive Files" else "✓ Connect & Receive"
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_PEER_TRANSFER_REQUEST)
+            .setContentTitle(title)
+            .setContentText(shortText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(openAppPendingIntent)
+            .setAutoCancel(true)
+            .addAction(
+                android.R.drawable.ic_menu_send,
+                acceptButtonLabel,
+                acceptPendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Decline",
+                declinePendingIntent
+            )
+
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PEER_REQUEST, builder.build())
+        } catch (ignored: SecurityException) {}
+    }
+
+    fun dismissPeerTransferRequestNotification(context: Context) {
+        dismissNotification(context, NOTIFICATION_ID_PEER_REQUEST)
     }
 
     /**

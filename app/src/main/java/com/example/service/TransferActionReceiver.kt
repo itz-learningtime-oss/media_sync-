@@ -19,12 +19,15 @@ class TransferActionReceiver : BroadcastReceiver() {
         const val ACTION_SEND_FTP = "com.aistudio.mediasync.ACTION_SEND_FTP"
         const val ACTION_DISMISS_NOTIFICATION = "com.aistudio.mediasync.ACTION_DISMISS_NOTIFICATION"
         const val ACTION_STOP_SERVICE = "com.aistudio.mediasync.ACTION_STOP_SERVICE"
+        const val ACTION_ACCEPT_TRANSFER_REQUEST = "com.aistudio.mediasync.ACTION_ACCEPT_TRANSFER_REQUEST"
+        const val ACTION_DECLINE_TRANSFER_REQUEST = "com.aistudio.mediasync.ACTION_DECLINE_TRANSFER_REQUEST"
 
         const val EXTRA_MEDIA_URI = "extra_media_uri"
         const val EXTRA_FILE_NAME = "extra_file_name"
         const val EXTRA_MIME_TYPE = "extra_mime_type"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
         const val EXTRA_FILE_PATH = "extra_file_path"
+        const val EXTRA_REQUEST_ID = "extra_request_id"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -32,6 +35,18 @@ class TransferActionReceiver : BroadcastReceiver() {
         val notifId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
 
         when (action) {
+            ACTION_ACCEPT_TRANSFER_REQUEST -> {
+                val requestId = intent.getStringExtra(EXTRA_REQUEST_ID) ?: ""
+                PeerConnectionManager.acceptRequest(context, requestId, rememberDevice = true)
+                Toast.makeText(context, "✓ Connection accepted! Ready to receive files.", Toast.LENGTH_SHORT).show()
+            }
+
+            ACTION_DECLINE_TRANSFER_REQUEST -> {
+                val requestId = intent.getStringExtra(EXTRA_REQUEST_ID) ?: ""
+                PeerConnectionManager.declineRequest(context, requestId)
+                Toast.makeText(context, "Transfer request declined", Toast.LENGTH_SHORT).show()
+            }
+
             ACTION_STOP_SERVICE -> {
                 val serviceIntent = Intent(context, MediaObserverService::class.java).apply {
                     this.action = MediaObserverService.ACTION_STOP

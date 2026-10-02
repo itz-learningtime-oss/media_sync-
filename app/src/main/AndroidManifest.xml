@@ -35,6 +35,9 @@
     <!-- Optional: Request ignore battery optimizations for resilient background listener -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Self-Updating APK Installation Permission -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:name=".MediaSyncApp"
         android:allowBackup="true"
@@ -59,6 +62,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Direct Share from Gallery / File Manager (Single File) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- Direct Share from Gallery / File Manager (Multiple Files) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <!-- Foreground Service for MediaStore ContentObserver -->
@@ -78,8 +95,21 @@
                 <action android:name="com.aistudio.mediasync.ACTION_SEND_FTP" />
                 <action android:name="com.aistudio.mediasync.ACTION_DISMISS_NOTIFICATION" />
                 <action android:name="com.aistudio.mediasync.ACTION_STOP_SERVICE" />
+                <action android:name="com.aistudio.mediasync.ACTION_ACCEPT_TRANSFER_REQUEST" />
+                <action android:name="com.aistudio.mediasync.ACTION_DECLINE_TRANSFER_REQUEST" />
             </intent-filter>
         </receiver>
+
+        <!-- FileProvider for sharing APKs, documents, and received media -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

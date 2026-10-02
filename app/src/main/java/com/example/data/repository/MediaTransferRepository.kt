@@ -92,6 +92,10 @@ class MediaTransferRepository(
         transferDao.clearHistory()
     }
 
+    suspend fun recordTransferLog(log: TransferLog) = withContext(Dispatchers.IO) {
+        transferDao.insert(log)
+    }
+
     suspend fun clearDetectedMedia() = withContext(Dispatchers.IO) {
         detectedMediaDao.clearAll()
     }

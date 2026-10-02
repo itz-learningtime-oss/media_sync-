@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CropSquare
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Http
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,6 +69,13 @@ fun MediaItemCard(
     val context = LocalContext.current
     val timeFormatted = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(media.detectedAtMillis))
 
+    val isApk = media.displayName.endsWith(".apk", ignoreCase = true) || media.mimeType == "application/vnd.android.package-archive"
+    val isVideo = media.mimeType?.startsWith("video/") == true
+    val isAudio = media.mimeType?.startsWith("audio/") == true
+    val isPdf = media.displayName.endsWith(".pdf", ignoreCase = true) || media.mimeType?.contains("pdf") == true
+    val isDocument = isPdf || media.displayName.endsWith(".doc", true) || media.displayName.endsWith(".docx", true) ||
+            media.displayName.endsWith(".txt", true) || media.displayName.endsWith(".zip", true)
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -86,23 +97,60 @@ fun MediaItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Media Thumbnail Preview
+                // Media Thumbnail or Document Icon Preview
                 Box(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(
+                            when {
+                                isApk -> Color(0xFFEFF6FF)
+                                isDocument -> Color(0xFFF1F5F9)
+                                isVideo -> Color(0xFFFEF2F2)
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(media.contentUriString)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = media.displayName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(64.dp)
-                    )
+                    if (isApk) {
+                        Icon(
+                            imageVector = Icons.Default.Android,
+                            contentDescription = "APK",
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else if (isDocument) {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = "Document",
+                            tint = Color(0xFF475569),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else if (isAudio) {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = "Audio",
+                            tint = Color(0xFF8B5CF6),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else if (isVideo) {
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = "Video",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(media.contentUriString)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = media.displayName,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(64.dp)
+                        )
+                    }
 
                     // Overlay icon type
                     Box(
@@ -114,7 +162,13 @@ fun MediaItemCard(
                             .padding(2.dp)
                     ) {
                         Icon(
-                            imageVector = if (media.isScreenshot) Icons.Default.CropSquare else Icons.Default.CameraAlt,
+                            imageVector = when {
+                                isApk -> Icons.Default.Android
+                                media.isScreenshot -> Icons.Default.CropSquare
+                                isDocument -> Icons.Default.Description
+                                isVideo -> Icons.Default.Movie
+                                else -> Icons.Default.CameraAlt
+                            },
                             contentDescription = null,
                             tint = if (media.isScreenshot) AmberWarning else Color.White,
                             modifier = Modifier.size(12.dp)
@@ -156,48 +210,52 @@ fun MediaItemCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Badge: Screenshot vs Photo
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (media.isScreenshot) AmberWarning.copy(alpha = 0.15f)
-                                    else MaterialTheme.colorScheme.primaryContainer
+                        // Badge for category
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = when {
+                                        isApk -> "APK App"
+                                        media.isScreenshot -> "Screenshot"
+                                        isDocument -> "Document"
+                                        isVideo -> "Video"
+                                        else -> "Photo"
+                                    },
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when {
+                                        isApk -> Color(0xFF2563EB)
+                                        media.isScreenshot -> Color(0xFFD97706)
+                                        isDocument -> Color(0xFF475569)
+                                        else -> MaterialTheme.colorScheme.primary
+                                    }
                                 )
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = if (media.isScreenshot) "SCREENSHOT" else "CAMERA",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (media.isScreenshot) AmberWarning else MaterialTheme.colorScheme.primary
-                            )
-                        }
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = when {
+                                    isApk -> Color(0xFFEFF6FF)
+                                    media.isScreenshot -> Color(0xFFFEF3C7)
+                                    isDocument -> Color(0xFFF1F5F9)
+                                    else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                }
+                            ),
+                            border = null,
+                            modifier = Modifier.height(22.dp)
+                        )
 
-                        // Size pill
                         Text(
                             text = media.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        if (!media.bucketName.isNullOrBlank()) {
-                            Text(
-                                text = "• ${media.bucketName}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Quick Actions: Send HTTP & Send FTP
+            // Action Buttons Row: Send HTTP & Send FTP
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -205,22 +263,26 @@ fun MediaItemCard(
                 ElevatedButton(
                     onClick = onSendHttp,
                     colors = ButtonDefaults.elevatedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .height(38.dp)
-                        .testTag("send_http_button_${media.mediaStoreId}")
+                        .testTag("send_http_btn_${media.mediaStoreId}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Http,
-                        contentDescription = null,
+                        contentDescription = "Send HTTP",
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Wi-Fi (HTTP)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Send HTTP",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 FilledTonalButton(
@@ -229,19 +291,23 @@ fun MediaItemCard(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .height(38.dp)
-                        .testTag("send_ftp_button_${media.mediaStoreId}")
+                        .testTag("send_ftp_btn_${media.mediaStoreId}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Send,
-                        contentDescription = null,
+                        contentDescription = "Send FTP",
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("FTP Send", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Send FTP",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }

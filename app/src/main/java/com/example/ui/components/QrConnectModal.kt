@@ -4,9 +4,11 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -17,9 +19,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -35,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -43,10 +48,15 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PhoneIphone
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -57,6 +67,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -87,6 +100,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.example.data.model.ServerConfig
+import com.example.service.TransferSecurityManager
+import com.example.util.ApkSharingHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,12 +112,14 @@ fun QrConnectModal(
     currentServerConfig: ServerConfig,
     onDismiss: () -> Unit,
     onSaveConfig: (ServerConfig) -> Unit,
-    onTestConnection: suspend (String, Int) -> Pair<Boolean, String>
+    onTestConnection: suspend (String, Int) -> Pair<Boolean, String>,
+    onShareApk: (() -> Unit)? = null,
+    onCheckUpdate: ((String, Int, String?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Tab 0 = Scan PC QR, Tab 1 = Show Phone QR
+    // 0 = Scan QR, 1 = iOS / Browser, 2 = Share APK, 3 = P2P Hotspot
     var selectedTab by remember { mutableIntStateOf(0) }
 
     // Camera Permission State
@@ -120,18 +137,18 @@ fun QrConnectModal(
     ) { isGranted ->
         hasCameraPermission = isGranted
         if (!isGranted) {
-            Toast.makeText(context, "Camera permission needed to scan PC QR code", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Camera permission needed to scan QR code", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // Scanned PC Info State
+    // Scanned Target Info State
     var detectedPcInfo by remember { mutableStateOf<PcConnectionInfo?>(null) }
     var isTestingConnection by remember { mutableStateOf(false) }
     var connectionTestResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var autoConnectEnabled by remember { mutableStateOf(true) }
     var isScanningActive by remember { mutableStateOf(true) }
 
-    // Photo picker for scanning QR from photo/screenshot of PC screen
+    // Photo picker for scanning QR from photo/screenshot of screen
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -151,9 +168,9 @@ fun QrConnectModal(
                                 if (parsed != null) {
                                     detectedPcInfo = parsed
                                     isScanningActive = false
-                                    Toast.makeText(context, "PC QR Detected from photo!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "QR Detected from image!", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(context, "QR decoded: $qrText", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "QR content: $qrText", Toast.LENGTH_LONG).show()
                                 }
                             }
                         } else {
@@ -171,7 +188,7 @@ fun QrConnectModal(
         }
     }
 
-    // When a PC info is detected, test connection
+    // When info is detected, test connection
     LaunchedEffect(detectedPcInfo) {
         val info = detectedPcInfo
         if (info != null) {
@@ -181,7 +198,6 @@ fun QrConnectModal(
             isTestingConnection = false
 
             if (result.first && autoConnectEnabled) {
-                // Auto-apply if connection succeeded
                 val newConfig = currentServerConfig.copy(
                     pcHostIp = info.hostIp,
                     httpPort = info.httpPort,
@@ -192,6 +208,8 @@ fun QrConnectModal(
                 )
                 onSaveConfig(newConfig)
                 Toast.makeText(context, "Seamlessly connected to ${info.hostIp}:${info.httpPort}!", Toast.LENGTH_LONG).show()
+                // Automatic version comparison on peer connection
+                onCheckUpdate?.invoke(info.hostIp, info.httpPort, info.authToken)
             }
         }
     }
@@ -206,7 +224,7 @@ fun QrConnectModal(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(24.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
@@ -244,13 +262,13 @@ fun QrConnectModal(
                         }
                         Column {
                             Text(
-                                text = "PC Quick Connect",
+                                text = "Cross-Platform Connect",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Scan QR from PC App / Share Phone QR",
+                                text = "PC, Android, iOS Safari & P2P Hotspot",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -266,11 +284,12 @@ fun QrConnectModal(
                     }
                 }
 
-                // Mode Tabs
-                TabRow(
+                // 4 Scrollable / Segmented Tabs
+                ScrollableTabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    contentColor = MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    edgePadding = 12.dp
                 ) {
                     Tab(
                         selected = selectedTab == 0,
@@ -279,12 +298,9 @@ fun QrConnectModal(
                             isScanningActive = true
                         },
                         text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Text("Scan PC Screen", fontWeight = FontWeight.SemiBold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("Scan Target QR", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     )
@@ -292,32 +308,45 @@ fun QrConnectModal(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Text("Phone's QR", fontWeight = FontWeight.SemiBold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.PhoneIphone, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("Wi-Fi Browser Portal", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.Android, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("Share App APK", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("Offline PC & Mobile (No Internet)", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     )
                 }
 
-                // TAB 0: SCAN PC SCREEN (CAMERA + GALLERY + DETECTED PC CARD)
-                if (selectedTab == 0) {
-                    ScanPcScreenTab(
+                // Content per Tab
+                when (selectedTab) {
+                    0 -> ScanTargetQrTab(
                         hasCameraPermission = hasCameraPermission,
                         isScanningActive = isScanningActive,
                         detectedPcInfo = detectedPcInfo,
                         isTestingConnection = isTestingConnection,
                         connectionTestResult = connectionTestResult,
                         autoConnectEnabled = autoConnectEnabled,
-                        onRequestCameraPermission = {
-                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        },
-                        onPickPhoto = {
-                            photoPickerLauncher.launch("image/*")
-                        },
+                        onRequestCameraPermission = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                        onPickPhoto = { photoPickerLauncher.launch("image/*") },
                         onQrScanned = { rawQr ->
                             if (isScanningActive) {
                                 val parsed = QrCodeDecoder.parsePcConnectionInfo(rawQr)
@@ -344,15 +373,33 @@ fun QrConnectModal(
                                 ftpPassword = info.ftpPass
                             )
                             onSaveConfig(newConfig)
-                            Toast.makeText(context, "Saved PC config (${info.hostIp}:${info.httpPort})", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Saved target (${info.hostIp}:${info.httpPort})", Toast.LENGTH_SHORT).show()
+                            onCheckUpdate?.invoke(info.hostIp, info.httpPort, info.authToken)
                             onDismiss()
                         }
                     )
-                } else {
-                    // TAB 1: SHOW PHONE QR MATRIX
-                    ShowPhoneQrTab(
+                    1 -> IosBrowserPortalTab(
                         localIp = currentLocalIp,
-                        currentPort = 8080
+                        port = 8080
+                    )
+                    2 -> ShareApkTab(
+                        localIp = currentLocalIp,
+                        port = 8080,
+                        onShareViaSystem = {
+                            if (onShareApk != null) {
+                                onShareApk()
+                            } else {
+                                ApkSharingHelper.createShareApkIntent(context).let {
+                                    val chooser = Intent.createChooser(it, "Share MediaSync APK")
+                                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(chooser)
+                                }
+                            }
+                        }
+                    )
+                    3 -> P2pHotspotTab(
+                        localIp = currentLocalIp,
+                        port = 8080
                     )
                 }
             }
@@ -361,7 +408,7 @@ fun QrConnectModal(
 }
 
 @Composable
-private fun ScanPcScreenTab(
+private fun ScanTargetQrTab(
     hasCameraPermission: Boolean,
     isScanningActive: Boolean,
     detectedPcInfo: PcConnectionInfo?,
@@ -384,12 +431,9 @@ private fun ScanPcScreenTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Explanatory prompt banner
         Card(
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFF0F9FF)
-            ),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F9FF)),
             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBAE6FD))
         ) {
             Row(
@@ -404,7 +448,7 @@ private fun ScanPcScreenTab(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = "Point camera at the QR code displayed on your PC application to auto-configure IP and ports.",
+                    text = "Point camera at the QR code displayed on your PC application or other phone to pair and transfer automatically.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF0369A1),
                     lineHeight = 16.sp
@@ -412,7 +456,6 @@ private fun ScanPcScreenTab(
             }
         }
 
-        // Camera Viewfinder or Permission Prompt
         if (!hasCameraPermission) {
             Card(
                 modifier = Modifier
@@ -442,7 +485,7 @@ private fun ScanPcScreenTab(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "To scan the PC screen QR code, allow camera access.",
+                        text = "To scan QR codes from PC or phone, allow camera access.",
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -459,7 +502,6 @@ private fun ScanPcScreenTab(
                 }
             }
         } else {
-            // Live Camera Viewfinder
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -473,18 +515,17 @@ private fun ScanPcScreenTab(
                     onQrDetected = onQrScanned
                 )
 
-                // Bottom actions on camera preview
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.6f))
+                        .background(Color.Black.copy(alpha = 0.65f))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (detectedPcInfo != null) "✓ PC QR Detected!" else "Scanning for PC QR...",
+                        text = if (detectedPcInfo != null) "✓ Target Detected!" else "Scanning for QR Code...",
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
@@ -515,7 +556,7 @@ private fun ScanPcScreenTab(
             }
         }
 
-        // DETECTED PC CARD
+        // Detected Target Card
         if (detectedPcInfo != null) {
             val info = detectedPcInfo
             Card(
@@ -546,7 +587,7 @@ private fun ScanPcScreenTab(
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                text = "PC Server Detected",
+                                text = "Device Target Detected",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -569,7 +610,6 @@ private fun ScanPcScreenTab(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // IP and Port details
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -596,7 +636,6 @@ private fun ScanPcScreenTab(
                         }
                     }
 
-                    // Connection Test Status
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -614,11 +653,11 @@ private fun ScanPcScreenTab(
                     ) {
                         if (isTestingConnection) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Text("Testing connectivity to PC...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Testing connectivity...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                         } else if (connectionTestResult?.first == true) {
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
                             Text(
-                                text = "PC server verified & reachable!",
+                                text = "Device server reachable & verified!",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF15803D)
@@ -635,7 +674,6 @@ private fun ScanPcScreenTab(
                         }
                     }
 
-                    // Connect & Save Button
                     Button(
                         onClick = { onApplyAndSave(info) },
                         modifier = Modifier
@@ -650,52 +688,138 @@ private fun ScanPcScreenTab(
                 }
             }
         }
-
-        // Quick Photo Picker fallback
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Alternative Options",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                OutlinedButton(
-                    onClick = onPickPhoto,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Select Screenshot / Photo of PC QR", fontSize = 12.sp)
-                }
-            }
-        }
     }
 }
 
 @Composable
-private fun ShowPhoneQrTab(
+private fun IosBrowserPortalTab(
     localIp: String,
-    currentPort: Int
+    port: Int
 ) {
     val context = LocalContext.current
-    val qrBitmap: Bitmap? = remember(localIp, currentPort) {
-        val payload = "http://$localIp:$currentPort"
-        QrGenerator.generateQrCode(payload, 512)
+    var currentIp by remember(localIp) { mutableStateOf(localIp) }
+    var pinCode by remember { mutableStateOf(TransferSecurityManager.pinCode.value) }
+    var authToken by remember { mutableStateOf(TransferSecurityManager.authToken.value) }
+
+    LaunchedEffect(Unit) {
+        val detected = com.example.util.NetworkUtils.getLocalIpAddress(context)
+        if (detected != "127.0.0.1") {
+            currentIp = detected
+        }
     }
+
+    // Portal URL with embedded token for instant 1-scan QR verification
+    val securePortalUrl = "http://$currentIp:$port/?token=$authToken"
+    val manualPortalUrl = "http://$currentIp:$port/"
+
+    val qrBitmap: Bitmap? = remember(currentIp, port, authToken) {
+        QrGenerator.generateQrCode(securePortalUrl, 512)
+    }
+
+    val isLoopbackOrEmulator = currentIp == "127.0.0.1" || currentIp.startsWith("10.0.2.")
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Security PIN Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFF15803D),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = "Security Layer: Active",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF166534)
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val newPin = TransferSecurityManager.regeneratePin()
+                            pinCode = newPin
+                            authToken = TransferSecurityManager.authToken.value
+                            Toast.makeText(context, "Regenerated New PIN: $newPin", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("New PIN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "6-Digit Access PIN:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF166534)
+                        )
+                        Text(
+                            text = "${pinCode.take(3)} ${pinCode.takeLast(3)}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF0F172A),
+                            letterSpacing = 2.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Security PIN", pinCode))
+                            Toast.makeText(context, "Copied PIN: $pinCode", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy PIN", fontSize = 11.sp)
+                    }
+                }
+
+                Text(
+                    text = "🔒 Scanning the QR code unlocks access automatically. If typing manually on PC, enter this PIN.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF15803D),
+                    lineHeight = 15.sp
+                )
+            }
+        }
+
+        // QR Code Box (Unclipped, standard high-contrast rendering)
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -703,71 +827,659 @@ private fun ShowPhoneQrTab(
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (qrBitmap != null) {
-                    Image(
-                        bitmap = qrBitmap.asImageBitmap(),
-                        contentDescription = "Phone Receiver QR Code",
-                        modifier = Modifier
-                            .size(210.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = qrBitmap.asImageBitmap(),
+                                contentDescription = "iOS & PC Browser Portal QR Code",
+                                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                modifier = Modifier.size(200.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Point iPhone / Android camera or Google Lens to connect",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .size(210.dp)
-                            .background(Color(0xFFF1F5F9)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(200.dp), contentAlignment = Alignment.Center) {
                         Text("Generating QR...", color = Color.Gray)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+                    color = Color(0xFFF1F5F9),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
                 ) {
                     Text(
-                        text = "http://$localIp:$currentPort/receive",
+                        text = manualPortalUrl,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF15803D),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Action Buttons Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Portal URL", manualPortalUrl))
+                    Toast.makeText(context, "Copied URL to clipboard: $manualPortalUrl", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy URL", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = {
+                    currentIp = com.example.util.NetworkUtils.getLocalIpAddress(context)
+                    Toast.makeText(context, "Refreshed IP: $currentIp", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Refresh IP", fontSize = 12.sp)
+            }
+
+            Button(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(securePortalUrl)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Cannot open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1.1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Open Web", fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShareApkTab(
+    localIp: String,
+    port: Int,
+    onShareViaSystem: () -> Unit
+) {
+    val context = LocalContext.current
+    var currentIp by remember(localIp) { mutableStateOf(localIp) }
+
+    LaunchedEffect(Unit) {
+        val detected = com.example.util.NetworkUtils.getLocalIpAddress(context)
+        if (detected != "127.0.0.1") {
+            currentIp = detected
+        }
+    }
+
+    val versionInfo = remember { com.example.service.AppUpdateManager.getVersionInfo(context) }
+    val apkUrl = "http://$currentIp:$port/download/latest-apk"
+    val qrBitmap: Bitmap? = remember(currentIp, port) {
+        QrGenerator.generateQrCode(apkUrl, 512)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Android,
+                    contentDescription = null,
+                    tint = Color(0xFF1D4ED8),
+                    modifier = Modifier.size(32.dp)
+                )
+                Column {
+                    Text(
+                        text = "Share Latest App APK (v${versionInfo.versionName})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E40AF)
+                    )
+                    Text(
+                        text = "Build #${versionInfo.versionCode} • Directly extracted from running OS runtime. Includes all current updates and fixes!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF2563EB),
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = qrBitmap.asImageBitmap(),
+                                contentDescription = "Download Latest APK QR Code",
+                                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                modifier = Modifier.size(200.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Point any camera or scanner to download latest APK",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    Box(modifier = Modifier.size(200.dp), contentAlignment = Alignment.Center) {
+                        Text("Generating QR...", color = Color.Gray)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF1F5F9),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Text(
+                        text = apkUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Show this QR code to the PC camera or scan it with PC Connect to link directly.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Receiver URL", "http://$localIp:$currentPort/receive")
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(context, "Copied Receiver URL to clipboard", Toast.LENGTH_SHORT).show()
-            },
-            shape = RoundedCornerShape(10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Copy Receiver URL")
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("APK Download Link", apkUrl))
+                    Toast.makeText(context, "Copied APK Link: $apkUrl", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy Link", fontSize = 12.sp)
+            }
+
+            Button(
+                onClick = onShareViaSystem,
+                modifier = Modifier.weight(1.3f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Share APK File", fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun P2pHotspotTab(
+    localIp: String,
+    port: Int
+) {
+    val context = LocalContext.current
+    var hotspotSsid by remember { mutableStateOf("MediaSync-P2P") }
+    var hotspotPass by remember { mutableStateOf("12345678") }
+    var activeIp by remember(localIp) { mutableStateOf(localIp) }
+
+    LaunchedEffect(Unit) {
+        val detected = com.example.util.NetworkUtils.getLocalIpAddress(context)
+        if (detected != "127.0.0.1") {
+            activeIp = detected
+        }
+    }
+
+    val currentWorkingUrl = "http://$activeIp:$port/"
+
+    val escapedSsid = hotspotSsid.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace(":", "\\:")
+    val escapedPass = hotspotPass.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace(":", "\\:")
+    val wifiQrPayload = "WIFI:T:WPA;S:$escapedSsid;P:$escapedPass;;"
+    val qrBitmap: Bitmap? = remember(wifiQrPayload) {
+        QrGenerator.generateQrCode(wifiQrPayload, 512)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Hero Card: Offline PC Browser & Mobile Direct
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFDCFCE7)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WifiTethering,
+                        contentDescription = null,
+                        tint = Color(0xFF15803D),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Offline PC & Mobile Direct Connect",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF166534)
+                    )
+                    Text(
+                        text = "No Internet connection, No Wi-Fi router, No USB Cable, and No ADB required! Connect your PC directly to this phone's Hotspot and transfer files in any PC browser.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF15803D),
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        // Quick Action 1: Open Hotspot Settings on Phone
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("1", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Text(
+                            text = "Turn On Mobile Hotspot",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            com.example.util.NetworkUtils.openHotspotSettings(context)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open Settings", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Text(
+                    text = "Tip: You do NOT need cellular mobile data or internet enabled. The phone creates a private high-speed Wi-Fi network between your PC and phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Step 2: Wi-Fi Hotspot Name & Quick Join QR
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("2", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text(
+                        text = "Connect PC or Phone to Hotspot Wi-Fi",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Text(
+                    text = "On your Windows PC / Mac / Linux laptop, click the Wi-Fi icon and connect to your phone's Hotspot Wi-Fi:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = hotspotSsid,
+                        onValueChange = { hotspotSsid = it },
+                        label = { Text("Hotspot SSID Name") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = hotspotPass,
+                        onValueChange = { hotspotPass = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                if (qrBitmap != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White)
+                                .padding(10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = qrBitmap.asImageBitmap(),
+                                contentDescription = "Wi-Fi Hotspot QR Code",
+                                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                modifier = Modifier.size(180.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Other mobile phones / iPads can point their camera at this QR to connect instantly!",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // Step 3: Open Offline Browser Portal on PC
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("3", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text(
+                        text = "Open in PC Browser (Chrome / Edge / Safari)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Text(
+                    text = "Once your PC Wi-Fi is connected to your Hotspot, open Chrome on PC and navigate to the detected URL below:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = currentWorkingUrl,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF0284C7)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "🛡️ PIN: ${TransferSecurityManager.pinCode.value}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF15803D)
+                            )
+                            Text(
+                                text = "✓ Live URL",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0284C7)
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Hotspot URL", currentWorkingUrl))
+                            Toast.makeText(context, "Copied URL: $currentWorkingUrl", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy URL", fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            activeIp = com.example.util.NetworkUtils.getLocalIpAddress(context)
+                            Toast.makeText(context, "Active Network IP: $activeIp", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Refresh IP", fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentWorkingUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Cannot open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1.1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Test Browser", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Benefits Checklist
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Seamless Zero-Setup Features:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                    Text("100% Offline — No internet or mobile data used", fontSize = 12.sp, color = Color(0xFF334155))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                    Text("No ADB tool or USB drivers needed on PC", fontSize = 12.sp, color = Color(0xFF334155))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                    Text("Full 2-way transfers: Download files & upload to phone", fontSize = 12.sp, color = Color(0xFF334155))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                    Text("Works on Windows, Mac, Linux, ChromeOS & iOS Safari", fontSize = 12.sp, color = Color(0xFF334155))
+                }
+            }
         }
     }
 }

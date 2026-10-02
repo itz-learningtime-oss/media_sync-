@@ -21,9 +21,11 @@ class HttpTransferClient(private val context: Context) {
     }
 
     private val okHttpClient = OkHttpClient.Builder()
+        .connectionPool(okhttp3.ConnectionPool(0, 1, java.util.concurrent.TimeUnit.NANOSECONDS))
+        .retryOnConnectionFailure(true)
         .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
     suspend fun uploadFile(
@@ -64,6 +66,7 @@ class HttpTransferClient(private val context: Context) {
             val request = Request.Builder()
                 .url(url)
                 .post(multipartBody)
+                .addHeader("Connection", "close")
                 .addHeader("User-Agent", "MediaSyncBridge-Android/1.0")
                 .build()
 

@@ -24,6 +24,7 @@ data class PcConnectionInfo(
     val ftpUser: String = "anonymous",
     val ftpPass: String = "",
     val serverName: String = "PC Server",
+    val authToken: String? = null,
     val rawContent: String = ""
 )
 
@@ -124,6 +125,7 @@ object QrCodeDecoder {
                     val ftpUser = json.optString("ftp_user", json.optString("user", "anonymous"))
                     val ftpPass = json.optString("ftp_pass", json.optString("password", ""))
                     val name = json.optString("name", json.optString("pc_name", "PC Server"))
+                    val token = json.optString("token").ifEmpty { json.optString("pin").ifEmpty { null } }
                     return PcConnectionInfo(
                         hostIp = ip,
                         httpPort = if (httpPort in 1..65535) httpPort else 8000,
@@ -132,6 +134,7 @@ object QrCodeDecoder {
                         ftpUser = ftpUser,
                         ftpPass = ftpPass,
                         serverName = name,
+                        authToken = token,
                         rawContent = trimmed
                     )
                 }
@@ -156,13 +159,20 @@ object QrCodeDecoder {
                 val host = uri.host ?: ""
                 val port = if (uri.port != -1) uri.port else 8000
                 val path = if (!uri.path.isNullOrEmpty() && uri.path != "/") uri.path else "/upload"
+                val query = uri.query ?: ""
+                val token = when {
+                    query.contains("token=") -> query.substringAfter("token=").substringBefore("&")
+                    query.contains("pin=") -> query.substringAfter("pin=").substringBefore("&")
+                    else -> null
+                }
 
                 if (isValidIpOrHost(host)) {
                     return PcConnectionInfo(
                         hostIp = host,
                         httpPort = port,
                         httpEndpoint = path,
-                        serverName = "PC ($host)",
+                        serverName = "Device ($host)",
+                        authToken = token,
                         rawContent = trimmed
                     )
                 }
